@@ -53,6 +53,10 @@ area["ISO3166-1"="HU"]->.hu;
   way["landuse"="meadow"](area.hu);
   way["landuse"="orchard"](area.hu);
   way["landuse"="vineyard"](area.hu);
+  relation["landuse"="farmland"](area.hu);
+  relation["landuse"="meadow"](area.hu);
+  relation["landuse"="orchard"](area.hu);
+  relation["landuse"="vineyard"](area.hu);
 );
 out body;
 >;
@@ -146,10 +150,69 @@ def way_to_feature(way: dict, nodes: dict) -> dict | None:
     }
 
 
+def relation_to_feature(rel: dict, ways_by_id: dict, nodes: dict) -> dict | None:
+    """Multipolygon relation → GeoJSON Feature (csak outer tagek)."""
+    if "tags" not in rel:
+        return None
+    landuse = rel["tags"].get("landuse")
+    if landuse not in LANDUSE_TYPES:
+        return None
+
+    outer_coords = []
+    for member in rel.get("members", []):
+        if member.get("type") == "way" and member.get("role") in ("outer", ""):
+            way = ways_by_id.get(member["ref"])
+            if not way:
+                continue
+            try:
+                coords = [nodes[nid] for nid in way.get("nodes", []) if nid in nodes]
+                if len(coords) >= 3:
+                    outer_coords.append(coords)
+            except KeyError:
+                pass
+
+    if not outer_coords:
+        return None
+
+    # Legnagyobb outer ring mint fő polygon
+    main = max(outer_coords, key=len)
+    try:
+        poly = make_valid(Polygon(main))
+    except Exception:
+        return None
+    if poly.is_empty:
+        return None
+
+    area_m2 = poly.area * DEG_TO_M2
+    min_area = MIN_AREA_BY_TYPE.get(landuse, 200)
+    if min_area > 0 and area_m2 < min_area:
+        return None
+
+    simplified = poly.simplify(SIMPLIFY_TOL, preserve_topology=True)
+    if simplified.is_empty or simplified.geom_type not in ("Polygon", "MultiPolygon"):
+        return None
+    if simplified.geom_type == "MultiPolygon":
+        simplified = max(simplified.geoms, key=lambda g: g.area)
+
+    return {
+        "type": "Feature",
+        "geometry": mapping(simplified),
+        "properties": {
+            "id":      rel["id"],
+            "lu":      landuse,
+            "name":    rel["tags"].get("name") or rel["tags"].get("ref") or None,
+            "area_ha": round(area_m2 / 10000, 1),
+        },
+    }
+
+
 def osm_to_geojson(osm: dict) -> dict:
     log("Node index felépítése…")
     nodes = build_node_index(osm["elements"])
     log(f"  {len(nodes):,} node")
+
+    # Way index a relation feldolgozáshoz
+    ways_by_id = {el["id"]: el for el in osm["elements"] if el["type"] == "way"}
 
     log("Way → GeoJSON konverzió + egyszerűsítés…")
     features, skipped = [], 0
@@ -166,7 +229,20 @@ def osm_to_geojson(osm: dict) -> dict:
         if (i + 1) % 10000 == 0:
             log(f"  {i+1:,}/{len(ways):,} — ok: {len(features):,}, skip: {skipped:,}")
 
-    log(f"Kész: {len(features):,} terület, {skipped:,} kihagyva")
+    log("Relation (multipolygon) feldolgozása…")
+    relations = [el for el in osm["elements"] if el["type"] == "relation"]
+    log(f"  {len(relations):,} relation feldolgozása…")
+    rel_ok, rel_skip = 0, 0
+    for rel in relations:
+        feat = relation_to_feature(rel, ways_by_id, nodes)
+        if feat:
+            features.append(feat)
+            rel_ok += 1
+        else:
+            rel_skip += 1
+    log(f"  relation ok: {rel_ok:,}, skip: {rel_skip:,}")
+
+    log(f"Kész: {len(features):,} terület, {skipped + rel_skip:,} kihagyva")
 
     by_type = {}
     for f in features:
