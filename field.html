@@ -91,6 +91,17 @@
     .risk-bar-lg-fill { height: 100%; border-radius: 4px; transition: width .5s; }
 
     .risk-score { font-family: var(--mono); font-size: 12px; }
+
+    /* Réteg gombok */
+    .layer-btn {
+      padding: 4px 10px; font-size: 11px;
+      border-radius: var(--radius); border: 1px solid var(--border);
+      background: transparent; color: var(--text-muted);
+      cursor: pointer; transition: background .12s, color .12s, border-color .12s;
+      font-family: var(--mono);
+    }
+    .layer-btn.active { background: var(--green-soft); color: var(--green); border-color: var(--green-line); }
+    #overview-map { border-top: 1px solid var(--border); }
   </style>
 </head>
 <body>
@@ -108,6 +119,32 @@
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
             Tábla hozzáadása
           </button>
+        </div>
+      </div>
+
+      <!-- ── Áttekintő térkép ──────────────────────────────────────────── -->
+      <div class="card" style="margin-bottom:14px;overflow:hidden;">
+        <div class="card-h">
+          <h3>Táblatérkép — Magyarország</h3>
+          <div class="right" style="gap:6px;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-right:2px;">Réteg:</span>
+            <button class="layer-btn active" data-flayer="farmland">OSM szántók</button>
+            <button class="layer-btn" data-flayer="fields">Saját táblák</button>
+            <button class="layer-btn" data-flayer="weather">Időjárás</button>
+          </div>
+        </div>
+        <div id="overview-map" style="height:420px;"></div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+          font-family:var(--mono);font-size:10px;color:var(--text-dim);
+          padding:8px 16px;border-top:1px solid var(--border);" id="overview-legend">
+          <div style="width:12px;height:12px;border-radius:2px;background:#c8e6a0;flex-shrink:0;"></div><span>Szántó</span>
+          <div style="width:12px;height:12px;border-radius:2px;background:#a8d8a8;flex-shrink:0;"></div><span>Rét/legelő</span>
+          <div style="width:12px;height:12px;border-radius:2px;background:#f9c784;flex-shrink:0;"></div><span>Gyümölcsös</span>
+          <div style="width:12px;height:12px;border-radius:2px;background:#d4a0c8;flex-shrink:0;"></div><span>Szőlő</span>
+          &nbsp;·&nbsp;
+          <div style="width:12px;height:12px;border-radius:50%;background:#4caf7d;flex-shrink:0;border:2px solid #0b0f0d;"></div><span>Alacsony</span>
+          <div style="width:12px;height:12px;border-radius:50%;background:#d4a017;flex-shrink:0;border:2px solid #0b0f0d;"></div><span>Közepes</span>
+          <div style="width:12px;height:12px;border-radius:50%;background:#e05252;flex-shrink:0;border:2px solid #0b0f0d;"></div><span>Magas</span>
         </div>
       </div>
 
@@ -593,6 +630,7 @@
       try { await fetchRisk(f); } catch {}
     }
     renderFields();
+    _refreshOverviewFields(); // overview térkép frissítése kockázatokkal
   }
 
   // ── OSM Farmland réteg ────────────────────────────────────────────────────
@@ -842,7 +880,181 @@
     }
   }
 
+  // ── Áttekintő térkép ──────────────────────────────────────────────────────
+  let _ovMap = null;
+  let _ovLayers = { farmland: true, fields: false, weather: false };
+
+  function _initOverviewMap() {
+    _ovMap = new maplibregl.Map({
+      container: "overview-map",
+      style: _isLightTheme()
+        ? "https://tiles.openfreemap.org/styles/positron"
+        : "https://tiles.openfreemap.org/styles/dark",
+      center: [19.5, 47.15],
+      zoom: 6.8,
+      attributionControl: false,
+    });
+    _ovMap.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+
+    _ovMap.on("load", () => {
+      // Farmland réteg
+      _loadFarmlandLayer(_ovMap);
+
+      // Saját táblák réteg
+      const empty = { type: "FeatureCollection", features: [] };
+      _ovMap.addSource("ov-fields", { type: "geojson", data: empty });
+      _ovMap.addLayer({
+        id: "ov-fields-fill", type: "fill", source: "ov-fields",
+        layout: { visibility: "none" },
+        paint: { "fill-color": ["get","color"], "fill-opacity": 0.55 },
+      });
+      _ovMap.addLayer({
+        id: "ov-fields-line", type: "line", source: "ov-fields",
+        layout: { visibility: "none" },
+        paint: { "line-color": ["get","color"], "line-width": 1.5 },
+      });
+      _ovMap.addLayer({
+        id: "ov-fields-circle", type: "circle", source: "ov-fields",
+        layout: { visibility: "none" },
+        paint: {
+          "circle-radius": 8,
+          "circle-color": ["get","color"],
+          "circle-stroke-color": "#0b0f0d",
+          "circle-stroke-width": 1.5,
+        },
+      });
+
+      // Időjárás réteg (DWD, ha elérhető)
+      _ovMap.addSource("ov-weather", { type: "geojson", data: empty });
+      _ovMap.addLayer({
+        id: "ov-weather-fill", type: "fill", source: "ov-weather",
+        layout: { visibility: "none" },
+        paint: {
+          "fill-color": ["case",
+            ["==",["get","tmean"],null],"rgba(0,0,0,0)",
+            [">",["get","tmean"],30],"#e05252",
+            [">",["get","tmean"],24],"#dc5a1e",
+            [">",["get","tmean"],18],"#d4a017",
+            [">",["get","tmean"],10],"#4caf7d",
+            "#5b9cf6"
+          ],
+          "fill-opacity": 0.45,
+        },
+      });
+
+      // Popup
+      const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, maxWidth: "220px" });
+      ["ov-fields-fill","ov-fields-circle"].forEach(lid => {
+        _ovMap.on("mousemove", lid, e => {
+          if (!e.features.length) return;
+          _ovMap.getCanvas().style.cursor = "pointer";
+          const p = e.features[0].properties;
+          popup.setLngLat(e.lngLat)
+            .setHTML(`<b>${p.name}</b><br>Kockázat: <span style="color:${p.color}">${p.risk ?? "—"}</span> · ${p.area_ha ? p.area_ha + " ha" : p.crop || ""}`)
+            .addTo(_ovMap);
+        });
+        _ovMap.on("mouseleave", lid, () => { _ovMap.getCanvas().style.cursor = ""; popup.remove(); });
+        _ovMap.on("click", lid, e => {
+          if (e.features.length) openDetail(e.features[0].properties.id);
+        });
+      });
+
+      _refreshOverviewFields();
+    });
+
+    // Témaváltás
+    new MutationObserver(() => {
+      _ovMap.setStyle(_isLightTheme()
+        ? "https://tiles.openfreemap.org/styles/positron"
+        : "https://tiles.openfreemap.org/styles/dark");
+      _ovMap.once("style.load", () => {
+        _loadFarmlandLayer(_ovMap);
+        _refreshOverviewFields();
+      });
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  }
+
+  function _refreshOverviewFields() {
+    if (!_ovMap?.getSource("ov-fields")) return;
+    const fields = loadFields();
+    const features = fields.map(f => {
+      const cache  = _riskCache[f.id];
+      const maxRisk = cache ? Math.max(...cache.results.map(r => r.risk)) : null;
+      const color   = maxRisk !== null ? riskColor(maxRisk) : "#4caf7d";
+      const props   = { id: f.id, name: f.name, risk: maxRisk, color, crop: CROP_LABELS[f.crop], area_ha: f.area_ha };
+      if (f.polygon) {
+        return { type: "Feature", geometry: f.polygon.geometry, properties: props };
+      }
+      return { type: "Feature",
+        geometry: { type: "Point", coordinates: [f.lon, f.lat] },
+        properties: props };
+    });
+    _ovMap.getSource("ov-fields").setData({ type: "FeatureCollection", features });
+  }
+
+  async function _loadWeatherOverlay() {
+    if (!_ovMap?.getSource("ov-weather")) return;
+    try {
+      const dwdOk = await isDWDAvailable().catch(() => false);
+      if (!dwdOk) return;
+      const data = await _loadDWD();
+      const today = new Date().toISOString().slice(0, 10);
+      const step = data.step || 0.0625;
+      const half = step / 2;
+      const features = data.grid.map(c => {
+        const row = c.days.find(d => d.date === today) || c.days[0] || {};
+        return {
+          type: "Feature",
+          geometry: c.geom
+            ? { type: "Polygon", coordinates: [c.geom] }
+            : { type: "Polygon", coordinates: [[
+                [c.lon-half,c.lat-half],[c.lon+half,c.lat-half],
+                [c.lon+half,c.lat+half],[c.lon-half,c.lat+half],
+                [c.lon-half,c.lat-half],
+              ]]},
+          properties: { tmean: row.tmean ?? null },
+        };
+      });
+      _ovMap.getSource("ov-weather").setData({ type: "FeatureCollection", features });
+    } catch(e) { console.warn("[overview weather]", e.message); }
+  }
+
+  function _setOverviewLayer(layer) {
+    if (!_ovMap) return;
+    _ovLayers[layer] = !_ovLayers[layer];
+
+    // Farmland
+    const fVis = _ovLayers.farmland ? "visible" : "none";
+    ["farmland-fill","farmland-line"].forEach(id => {
+      if (_ovMap.getLayer(id)) _ovMap.setLayoutProperty(id, "visibility", fVis);
+    });
+
+    // Saját táblák
+    const fldVis = _ovLayers.fields ? "visible" : "none";
+    ["ov-fields-fill","ov-fields-line","ov-fields-circle"].forEach(id => {
+      if (_ovMap.getLayer(id)) _ovMap.setLayoutProperty(id, "visibility", fldVis);
+    });
+    if (_ovLayers.fields) _refreshOverviewFields();
+
+    // Időjárás
+    const wxVis = _ovLayers.weather ? "visible" : "none";
+    if (_ovMap.getLayer("ov-weather-fill")) {
+      _ovMap.setLayoutProperty("ov-weather-fill", "visibility", wxVis);
+      if (_ovLayers.weather) _loadWeatherOverlay();
+    }
+  }
+
   // ── Init ───────────────────────────────────────────────────────────────────
+  _initOverviewMap();
+
+  // Réteg gombok
+  document.querySelectorAll(".layer-btn[data-flayer]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      btn.classList.toggle("active");
+      _setOverviewLayer(btn.dataset.flayer);
+    });
+  });
+
   document.getElementById("btn-add").onclick     = () => showForm();
   document.getElementById("btn-save-field").onclick  = saveField;
   document.getElementById("btn-cancel-field").onclick = hideForm;
