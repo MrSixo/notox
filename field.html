@@ -6,6 +6,7 @@
   <title>No-tox — Táblaelemző</title>
   <script src="/js/theme-init.js"></script>
   <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
   <style>
     .field-grid {
       display: grid;
@@ -254,7 +255,6 @@
   </main>
 
   <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
-  <link  rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/shpjs@6.1.0/dist/shp.js"></script>
   <script src="/js/config.js"></script>
@@ -318,7 +318,18 @@
   function loadFields() {
     try { return JSON.parse(localStorage.getItem(FIELDS_KEY) || "[]"); } catch { return []; }
   }
-  function saveFields(arr) { localStorage.setItem(FIELDS_KEY, JSON.stringify(arr)); }
+  function saveFields(arr) {
+    const json = JSON.stringify(arr);
+    // Figyelmeztetés ha közel az 5 MB-os localStorage limit
+    if (json.length > 3 * 1024 * 1024) {
+      console.warn(`[notox] Táblák localStorage mérete: ${(json.length / 1024 / 1024).toFixed(1)} MB — közel az 5 MB-os limithez. Régi polygon adatok törölhetők.`);
+    }
+    try {
+      localStorage.setItem(FIELDS_KEY, json);
+    } catch (e) {
+      alert("A tábla nem menthető: a localStorage megtelt. Töröljön egy régi táblát, vagy csökkentse a polygon méretét.");
+    }
+  }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
   // ── Risk cache (in-memory) ─────────────────────────────────────────────────
@@ -392,12 +403,21 @@
     document.getElementById("field-form-wrap").style.display = "";
     document.getElementById("form-title").textContent = id ? "Tábla szerkesztése" : "Új tábla";
 
-    // Reset
+    // Reset mezők
     ["f-name","f-lat","f-lon","f-notes"].forEach(i => document.getElementById(i).value = "");
     document.getElementById("f-crop").value      = "wheat";
     document.getElementById("f-prev-crop").value = "unknown";
     document.querySelectorAll("#soil-diseases input, #plant-diseases input")
       .forEach(cb => cb.checked = false);
+    // GIS polygon reset — megelőzi hogy régi polygon új táblára kerüljön
+    _gisPolygon = null;
+    document.getElementById("f-map-wrap").style.display   = "none";
+    document.getElementById("f-gis-info").style.display   = "none";
+    document.getElementById("f-gis-status").textContent   = "GeoJSON · KML · GPX · Shapefile (.zip)";
+    document.getElementById("f-gis-status").style.color   = "var(--text-dim)";
+    if (_gisMap?.getSource?.("field-poly")) {
+      _gisMap.getSource("field-poly").setData({ type: "FeatureCollection", features: [] });
+    }
 
     if (id) {
       const field = loadFields().find(f => f.id === id);
@@ -594,16 +614,17 @@
     _gisPolygon = feature;
     if (!_gisMap || !_gisMap.getSource("field-poly")) return;
     _gisMap.getSource("field-poly").setData({ type: "FeatureCollection", features: [feature] });
-    // Zoom to bounds
+    // Zoom to bounds — reduce alapú, nem spread: kerüli a stack overflow-t nagy fájloknál
     const coords = feature.geometry.type === "Polygon"
       ? feature.geometry.coordinates[0]
       : feature.geometry.coordinates.flat();
     if (!coords.length) return;
-    const lons = coords.map(c => c[0]), lats = coords.map(c => c[1]);
-    _gisMap.fitBounds(
-      [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-      { padding: 30, duration: 600 }
-    );
+    let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+    for (const [ln, la] of coords) {
+      if (ln < minLon) minLon = ln; if (ln > maxLon) maxLon = ln;
+      if (la < minLat) minLat = la; if (la > maxLat) maxLat = la;
+    }
+    _gisMap.fitBounds([[minLon, minLat], [maxLon, maxLat]], { padding: 30, duration: 600 });
   }
 
   // Területszámítás (Shoelace, m² → ha)
@@ -618,12 +639,15 @@
     return Math.abs(area / 2) / 10000;
   }
 
-  // Centroid (átlag koordináta)
+  // Centroid — zárópontot kizárva (GeoJSON ring: coords[0] === coords[last])
   function _centroid(coords) {
-    const n = coords.length;
+    const pts = coords[0][0] === coords[coords.length - 1][0] &&
+                coords[0][1] === coords[coords.length - 1][1]
+      ? coords.slice(0, -1) : coords;
+    const n = pts.length;
     return [
-      coords.reduce((s, c) => s + c[0], 0) / n,
-      coords.reduce((s, c) => s + c[1], 0) / n,
+      pts.reduce((s, c) => s + c[0], 0) / n,
+      pts.reduce((s, c) => s + c[1], 0) / n,
     ];
   }
 
@@ -684,15 +708,21 @@
     const pts  = [...doc.querySelectorAll("trkpt, rtept, wpt")];
     if (!pts.length) throw new Error("Nem található pont a GPX-ben.");
     const ring = pts.map(p => [+p.getAttribute("lon"), +p.getAttribute("lat")]);
-    if (ring[0][0] !== ring[ring.length - 1][0]) ring.push(ring[0]); // zárd be
+    const first = ring[0], last = ring[ring.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) ring.push([...first]); // zárd be
     return { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} };
   }
+
+  const GIS_MAX_MB = 50;
 
   async function _handleGisFile(file) {
     const status = document.getElementById("f-gis-status");
     status.textContent = "Feldolgozás…";
     status.style.color = "var(--text-muted)";
     try {
+      if (file.size > GIS_MAX_MB * 1024 * 1024) {
+        throw new Error(`A fájl túl nagy (max ${GIS_MAX_MB} MB, jelenlegi: ${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+      }
       const ext = file.name.split(".").pop().toLowerCase();
       let feature;
 
