@@ -230,8 +230,8 @@
     const BUILTIN_MODELS = [
       { id: "__dewolf2003",    name: "Fuzárium (De Wolf 2003)",   params: { topt: 22.5, sigma: 6, rh_thr: 60, precip_min: 1,   risk_thr: 50 } },
       { id: "__wolf1999",      name: "Fuzárium (Wolf 1999)",      params: { topt: 20,   sigma: 8, rh_thr: 65, precip_min: 2,   risk_thr: 40 } },
-      { id: "__coakley1988",   name: "Sárgarozsda",               params: { topt: 11,   sigma: 5, rh_thr: 80, precip_min: 0.5, risk_thr: 30 } },
-      { id: "__madden1981",    name: "Levélrozsda",               params: { topt: 20,   sigma: 6, rh_thr: 75, precip_min: 0.2, risk_thr: 35 } },
+      { id: "__coakley1988",   name: "Sárgarozsda",               params: { topt: 11,   sigma: 5, rh_thr: 80, precip_min: 0,   risk_thr: 30 } },
+      { id: "__madden1981",    name: "Levélrozsda",               params: { topt: 20,   sigma: 6, rh_thr: 75, precip_min: 0,   risk_thr: 35 } },
       { id: "__pscheidt1993",  name: "Lisztharmat",               params: { topt: 21,   sigma: 5, rh_thr: 55, precip_min: 0,   risk_thr: 40 } },
     ];
     function loadAllModels() {
@@ -253,7 +253,8 @@
       }
       const tF  = Math.exp(-0.5 * Math.pow((tmean - params.topt) / params.sigma, 2));
       const rhF = rh >= params.rh_thr ? (rh - params.rh_thr) / (100 - params.rh_thr) : 0;
-      const pF  = (precip ?? 0) > 0 ? 1 - Math.exp(-(precip ?? 0) / (params.precip_min || 1)) : 0;
+      // precip_min === 0 → levéledfesség elegendő, csapadék nem feltétel
+      const pF  = !params.precip_min ? 1 : ((precip ?? 0) > 0 ? 1 - Math.exp(-(precip ?? 0) / params.precip_min) : 0);
       return Math.min(1, tF * rhF * pF);
     }
 

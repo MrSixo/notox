@@ -29,8 +29,8 @@ const LINE_COLORS = [
 const BUILTIN_MODELS = [
   { id: "__dewolf2003",  name: "Fuzárium kalász-rothadás (FHB)",           params: { topt: 22.5, sigma: 6, rh_thr: 60, precip_min: 1,   risk_thr: 50 } },
   { id: "__wolf1999",    name: "Fuzárium (egyszerűsített logisztikus)",     params: { topt: 20,   sigma: 8, rh_thr: 65, precip_min: 2,   risk_thr: 40 } },
-  { id: "__coakley1988", name: "Sárgarozsda (stripe rust)",                 params: { topt: 11,   sigma: 5, rh_thr: 80, precip_min: 0.5, risk_thr: 30 } },
-  { id: "__madden1981",  name: "Levélrozsda (leaf rust) — Madden",          params: { topt: 20,   sigma: 6, rh_thr: 75, precip_min: 0.2, risk_thr: 35 } },
+  { id: "__coakley1988", name: "Sárgarozsda (stripe rust)",                 params: { topt: 11,   sigma: 5, rh_thr: 80, precip_min: 0,   risk_thr: 30 } },
+  { id: "__madden1981",  name: "Levélrozsda (leaf rust) — Madden",          params: { topt: 20,   sigma: 6, rh_thr: 75, precip_min: 0,   risk_thr: 35 } },
   { id: "__pscheidt1993",name: "Lisztharmat (powdery mildew)",              params: { topt: 21,   sigma: 5, rh_thr: 55, precip_min: 0,   risk_thr: 40 } },
 ];
 
@@ -63,8 +63,10 @@ function runModelDay(params, tmean, rh, precip) {
   // Gauss alapú (gaussian + logistic egyaránt)
   const tFactor  = Math.exp(-0.5 * Math.pow((tmean - params.topt) / params.sigma, 2));
   const rhFactor = rh >= params.rh_thr ? (rh - params.rh_thr) / (100 - params.rh_thr) : 0;
-  const pMin     = params.precip_min || 1;
-  const pFactor  = precip > 0 ? 1 - Math.exp(-precip / pMin) : 0;
+  // precip_min === 0 → levéledfesség / harmat elég, csapadék nem feltétel (sárgarozsda, levélrozsda, lisztharmat)
+  const pFactor = !params.precip_min
+    ? 1
+    : (precip > 0 ? 1 - Math.exp(-precip / params.precip_min) : 0);
   return Math.min(1, tFactor * rhFactor * pFactor);
 }
 
