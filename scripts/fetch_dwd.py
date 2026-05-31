@@ -189,9 +189,10 @@ def build_json(run: str) -> dict:
                 lon = float(lon)
 
                 # Magyarország + 1 cellás puffer szűrés
+                # K irányban 3 cella buffer (Románia/Ukrajna határ) — szinkronban a JS buildGrid-del
                 in_hu = any(
                     point_in_hungary(lat + di * GRID_STEP, lon + dj * GRID_STEP)
-                    for di in range(-1, 2) for dj in range(-1, 3)
+                    for di in range(-1, 2) for dj in range(-1, 4)
                 )
                 if not in_hu:
                     continue
