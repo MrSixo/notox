@@ -112,11 +112,22 @@ def open_clipped(path: Path):
         if not datasets:
             raise RuntimeError(f"Nem nyitható meg: {path}")
         ds = datasets[0]
-    var  = list(ds.data_vars)[0]
-    return ds[var].sel(
-        latitude=slice(LAT_MAX, LAT_MIN),
-        longitude=slice(LON_MIN, LON_MAX),
+    var = list(ds.data_vars)[0]
+    da  = ds[var]
+
+    # Koordinátaneveket detektáljuk (latitude/lat, longitude/lon)
+    lat_dim = next((d for d in da.dims if "lat" in d.lower()), None)
+    lon_dim = next((d for d in da.dims if "lon" in d.lower()), None)
+    if lat_dim is None or lon_dim is None:
+        raise RuntimeError(f"Ismeretlen koordináta-dimenzió: {da.dims}")
+
+    lats = da[lat_dim].values
+    # Ascending (D→É) vagy descending (É→D) latitude?
+    lat_slice = (
+        slice(LAT_MIN, LAT_MAX) if lats[0] < lats[-1]
+        else slice(LAT_MAX, LAT_MIN)
     )
+    return da.sel(**{lat_dim: lat_slice, lon_dim: slice(LON_MIN, LON_MAX)})
 
 
 def build_json(run: str) -> dict:
@@ -165,8 +176,11 @@ def build_json(run: str) -> dict:
 
         # ── Rács összeállítása ─────────────────────────────────────────────
         log("\nJSON összeállítása…")
-        lats = tmax[0].latitude.values
-        lons = tmax[0].longitude.values
+        ref  = tmax[0]
+        lat_dim = next(d for d in ref.dims if "lat" in d.lower())
+        lon_dim = next(d for d in ref.dims if "lon" in d.lower())
+        lats = ref[lat_dim].values
+        lons = ref[lon_dim].values
 
         for i, lat in enumerate(lats):
             lat = float(lat)
