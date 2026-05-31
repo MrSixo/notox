@@ -103,7 +103,7 @@
           <div class="sub">Tábla-szintű kockázatbecslés · talaj- és növényminta adatokkal kiegészítve</div>
         </div>
         <div class="right">
-          <div class="spinner" id="spinner" style="display:none;"></div>
+          <div class="spinner" id="spinner" style="display:none;" role="status" aria-live="polite" aria-label="Betöltés folyamatban"></div>
           <button class="btn btn-primary" id="btn-add">
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
             Tábla hozzáadása
@@ -117,11 +117,11 @@
           <div style="font-size:13px;font-weight:700;color:var(--text-br);margin-bottom:16px;" id="form-title">Új tábla</div>
           <div class="form-grid" style="margin-bottom:14px;">
             <div class="field">
-              <label>Tábla neve</label>
-              <input id="f-name" type="text" placeholder="pl. Északi búzatábla" style="width:100%;" />
+              <label for="f-name">Tábla neve <span aria-hidden="true" style="color:var(--red);">*</span><span class="sr-only">(kötelező)</span></label>
+              <input id="f-name" type="text" placeholder="pl. Északi búzatábla" style="width:100%;" required aria-required="true" />
             </div>
             <div class="field">
-              <label>Jelenlegi kultúra</label>
+              <label for="f-crop">Jelenlegi kultúra</label>
               <select id="f-crop" style="width:100%;">
                 <option value="wheat">Búza</option>
                 <option value="corn">Kukorica</option>
@@ -158,15 +158,15 @@
                 color:var(--text-muted);background:var(--bg-2);border-radius:var(--radius);padding:8px 12px;"></div>
             </div>
             <div class="field">
-              <label>Szélesség (lat) <span style="font-size:9px;color:var(--text-dim);">— vagy centroid importból</span></label>
-              <input id="f-lat" type="number" step="0.0001" placeholder="47.5977" style="width:100%;" />
+              <label for="f-lat">Szélesség (lat) <span aria-hidden="true" style="color:var(--red);">*</span><span class="sr-only">(kötelező)</span> <span style="font-size:9px;color:var(--text-dim);">— vagy centroid importból</span></label>
+              <input id="f-lat" type="number" step="0.0001" placeholder="47.5977" style="width:100%;" required aria-required="true" />
             </div>
             <div class="field">
-              <label>Hosszúság (lon)</label>
-              <input id="f-lon" type="number" step="0.0001" placeholder="19.3631" style="width:100%;" />
+              <label for="f-lon">Hosszúság (lon) <span aria-hidden="true" style="color:var(--red);">*</span><span class="sr-only">(kötelező)</span></label>
+              <input id="f-lon" type="number" step="0.0001" placeholder="19.3631" style="width:100%;" required aria-required="true" />
             </div>
             <div class="field">
-              <label>Előveteménny</label>
+              <label for="f-prev-crop">Előveteménny</label>
               <select id="f-prev-crop" style="width:100%;">
                 <option value="unknown">Ismeretlen / nincs adat</option>
                 <option value="wheat">Búza</option>
@@ -182,7 +182,7 @@
               </select>
             </div>
             <div class="field">
-              <label>Megjegyzés</label>
+              <label for="f-notes">Megjegyzés</label>
               <input id="f-notes" type="text" placeholder="pl. vizes fekvésű, mélyedés..." style="width:100%;" />
             </div>
           </div>
@@ -367,8 +367,12 @@
       const soilCount  = (f.soilDiseases  || []).length;
       const plantCount = (f.plantDiseases || []).length;
       return `
-        <div class="field-card" onclick="openDetail('${f.id}')">
-          <button class="fc-del" onclick="event.stopPropagation();deleteField('${f.id}')"
+        <article class="field-card" tabindex="0" role="button"
+          aria-label="${f.name} — kattints a részletekért"
+          onclick="openDetail('${f.id}')"
+          onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDetail('${f.id}');}">
+          <button class="fc-del" aria-label="Tábla törlése: ${f.name}"
+            onclick="event.stopPropagation();deleteField('${f.id}')"
             title="Törlés">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
           </button>
@@ -387,12 +391,12 @@
             </div>
             <span class="risk-score" style="color:${riskColor(maxRisk)};min-width:30px;text-align:right;">${maxRisk}</span>
           </div>` : ""}
-        </div>`;
+        </article>`;
     }).join("") + `
-      <div class="field-add-card" onclick="showForm()">
-        <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
+      <button class="field-add-card" onclick="showForm()" aria-label="Tábla hozzáadása">
+        <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>
         <span style="font-size:12px;">Tábla hozzáadása</span>
-      </div>`;
+      </button>`;
   }
 
   let _editingId = null;

@@ -185,6 +185,7 @@ function cycleTheme() {
   const btn = document.getElementById("btn-theme");
   if (btn) {
     btn.title = THEME_LABELS[next];
+    btn.setAttribute("aria-label", `Téma váltása: jelenleg ${THEME_LABELS[next]}`);
     btn.innerHTML = `${svg(THEME_ICONS[next], 13)}<span style="font-size:10px;font-family:var(--mono)">${THEME_LABELS[next]}</span>`;
   }
 }
@@ -255,7 +256,7 @@ async function injectShell() {
     </button>
     <span class="topbar-title">${pageTitle}</span>
     <div class="topbar-right">
-      <button id="btn-theme" title="${THEME_LABELS[currentTheme]}" onclick="cycleTheme()"
+      <button id="btn-theme" title="${THEME_LABELS[currentTheme]}" aria-label="Téma váltása: jelenleg ${THEME_LABELS[currentTheme]}" onclick="cycleTheme()"
         style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:6px;
                border:1px solid var(--border);background:var(--bg-2);color:var(--text-muted);
                cursor:pointer;font-family:var(--mono);font-size:10px;transition:border-color .12s,color .12s;"

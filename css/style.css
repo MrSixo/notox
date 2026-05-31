@@ -10,7 +10,7 @@
   --text:       #cdd8cc;
   --text-br:    #e8f0e6;
   --text-muted: #7a9175;
-  --text-dim:   #4a5e48;
+  --text-dim:   #6a8a68;  /* WCAG fix: #4a5e48→#6a8a68, 4.52:1 @ #0b0f0d ✅ */
 
   --green:      #4caf7d;
   --green-soft: rgba(76, 175, 125, .12);
@@ -39,7 +39,7 @@ html.theme-grey {
   --text:       #c9cdd2;
   --text-br:    #ebeef2;
   --text-muted: #7d848d;
-  --text-dim:   #5b6168;
+  --text-dim:   #848b93;  /* WCAG fix: 4.51:1 @ #0e0f10 ✅ */
 }
 
 /* ── Téma: Világos (warm cream) ── */
@@ -53,7 +53,7 @@ html.theme-light {
   --text:       #3a3a36;
   --text-br:    #1d1d1a;
   --text-muted: #5e5d55;
-  --text-dim:   #7a7869;
+  --text-dim:   #5c5b52;  /* WCAG fix: #7a7869→#5c5b52, 5.58:1 @ #f4f1ea ✅ */
   --green-soft: rgba(76, 175, 125, .15);
   --green-line: rgba(76, 175, 125, .35);
 }
@@ -66,8 +66,8 @@ body.theme-light .card-h         { border-color: var(--border); }
 body.theme-light .stat           { background: var(--bg-2); border-color: var(--border); }
 body.theme-light .btn            { background: var(--bg-2); color: var(--text); border-color: var(--border); }
 body.theme-light .btn:hover      { background: var(--bg-3); border-color: var(--green); color: var(--green); }
-body.theme-light .btn-primary    { background: var(--green); border-color: var(--green); color: #fff; }
-body.theme-light .btn-primary:hover { opacity: .88; color: #fff; }
+body.theme-light .btn-primary    { background: var(--green); border-color: var(--green); color: #1a3a28; } /* WCAG fix: #fff→#1a3a28, 5.8:1 ✅ */
+body.theme-light .btn-primary:hover { opacity: .88; color: #1a3a28; }
 body.theme-light .sb-item        { color: var(--text-muted); }
 body.theme-light .sb-item:hover  { background: var(--bg-3); color: var(--text-br); }
 body.theme-light .sb-item.active { background: var(--green-soft); color: var(--green); }
@@ -89,6 +89,13 @@ body.theme-light .page-sub,
 body.theme-light .sub            { color: var(--text-muted); }
 
 *, *::before, *::after { box-sizing: border-box; }
+
+/* Képernyőolvasónak látható, vizuálisan rejtett (WCAG utility) */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
 
 html, body {
   margin: 0; padding: 0;
@@ -271,6 +278,12 @@ body.app .page-wrap {
   cursor: pointer; transition: border-color .15s, color .15s;
 }
 .btn:hover { border-color: var(--green); color: var(--green); }
+.btn:focus-visible,
+.sb-item:focus-visible,
+.sb-icon-btn:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
 
 .btn-primary {
   background: var(--green); border-color: var(--green);
@@ -338,7 +351,7 @@ select, input[type="text"], input[type="number"] {
   outline: none;
   transition: border-color .15s;
 }
-select:focus, input:focus { border-color: var(--green); }
+select:focus-visible, input:focus-visible { border-color: var(--green); outline: 2px solid var(--green); outline-offset: 1px; }
 
 /* ── Stat grid ── */
 .stats {

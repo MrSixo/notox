@@ -64,7 +64,8 @@
           <div class="sub">Rácsos előrejelzés · <span id="sub-model">ICON-EU</span> · <span id="refresh-lbl">betöltés…</span></div>
         </div>
         <div class="right">
-          <div class="spinner" id="spinner"></div>
+          <div class="spinner" id="spinner" role="status" aria-live="polite" aria-label="Betöltés folyamatban"></div>
+          <span id="refresh-status-sr" class="sr-only" aria-live="polite" aria-atomic="true"></span>
           <button class="btn" id="btn-refresh">
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 2.5A6.5 6.5 0 1 1 7 1.5M13.5 2.5V6M13.5 2.5H10"/></svg>
             Frissítés
