@@ -688,7 +688,7 @@
         updateKPIs();
         const loaded = gridData.filter(d => d.tmean !== null).length;
         document.getElementById("refresh-lbl").textContent =
-          `Frissítve: ${new Date().toLocaleTimeString("hu-HU")} · ${loaded}/${cells.length} cella`;
+          `Frissítve: ${new Date().toLocaleTimeString("hu-HU")} · ${loaded} cella`;
 
       } catch (err) {
         console.error("[loadAll] hiba:", err);
