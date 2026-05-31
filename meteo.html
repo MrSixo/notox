@@ -6,28 +6,24 @@
   <title>No-tox — Meteorológia</title>
   <script src="/js/theme-init.js"></script>
   <link rel="stylesheet" href="/css/style.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
   <style>
     #meteo-map { height: 460px; }
 
-    /* Permanent station label tooltips */
-    .leaflet-tooltip.station-lbl {
+    /* MapLibre popup stílus — igazodik a No-tox témához */
+    .maplibregl-popup-content {
       background: var(--bg-1, #111714);
-      border: 1.5px solid rgba(76,175,125,.5);
-      border-radius: 5px;
-      padding: 2px 7px;
-      font-family: "IBM Plex Mono", monospace;
-      font-size: 11px; font-weight: 600;
-      color: #4caf7d;
-      white-space: nowrap;
-      box-shadow: 0 2px 6px rgba(0,0,0,.5);
-      pointer-events: none;
+      border: 1px solid var(--border, #2a3a2a);
+      border-radius: 6px;
+      padding: 8px 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.6);
+      color: var(--text, #cdd8cc);
+      font-family: monospace;
+      font-size: 11px;
+      line-height: 1.8;
     }
-    .leaflet-tooltip.station-lbl.lm { border-color: rgba(212,160,23,.5);  color: #d4a017; }
-    .leaflet-tooltip.station-lbl.lh { border-color: rgba(220,90,30,.5);   color: #dc5a1e; }
-    .leaflet-tooltip.station-lbl.lk { border-color: rgba(224,82,82,.5);   color: #e05252; }
-    .leaflet-tooltip.station-lbl::before { display: none; }
-    .leaflet-tooltip.station-lbl-user { border-color: rgba(167,139,250,.5); color: #a78bfa; }
+    .maplibregl-popup-tip { display: none; }
+    .maplibregl-ctrl-attrib { font-size: 9px; opacity: .5; }
 
     .meteo-data-table { width:100%; border-collapse:collapse; font-size:12px; }
     .meteo-data-table th {
@@ -207,7 +203,7 @@
   </main>
 
   <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="/js/config.js"></script>
   <script src="/js/shell.js"></script>
   <script src="/js/openmeteo.js"></script>
@@ -378,138 +374,224 @@
       return inside;
     }
 
-    let map, gridLayers = [], stationMarkers = [];
+    let map;
     let currentLayer = "temp";
     let gridData = [], stationData = [];
 
-    // ── Color helpers ─────────────────────────────────────────────────────
-    function tempColor(t) {
-      if (t === null) return "#1a1a1a";
-      if (t > 30) return "#e05252"; if (t > 24) return "#dc5a1e";
-      if (t > 18) return "#d4a017"; if (t > 10) return "#4caf7d";
-      return "#5b9cf6";
-    }
-    function rhColor(r) {
-      if (r === null) return "#1a1a1a";
-      if (r > 85) return "#5b9cf6"; if (r > 70) return "#4caf7d";
-      if (r > 55) return "#d4a017"; return "#dc5a1e";
-    }
-    function precipColor(p) {
-      if (p === null) return "#1a1a1a";
-      if (p === 0)    return "#2a3a30";   // száraz nap — sötétzöld, nem fekete
-      if (p > 15) return "#e05252"; if (p > 5) return "#5b9cf6";
-      if (p > 1)  return "#4caf7d"; return "#3a6e52";
-    }
-    function cellColor(d) {
-      if (currentLayer === "rh")     return rhColor(d.rh_mean);
-      if (currentLayer === "precip") return precipColor(d.precip);
-      return tempColor(d.tmean);
-    }
-    function cellValue(d) {
-      if (currentLayer === "rh")     return d.rh_mean !== null ? Math.round(d.rh_mean) + "%" : "—";
-      if (currentLayer === "precip") return d.precip !== null ? d.precip.toFixed(1) + "mm" : "—";
-      return d.tmean !== null ? d.tmean.toFixed(1) + "°" : "—";
-    }
+    // ── Legend ────────────────────────────────────────────────────────────
     function legendItems() {
       if (currentLayer === "rh")     return [["#dc5a1e","<55%"],["#d4a017","55–70%"],["#4caf7d","70–85%"],["#5b9cf6",">85%"]];
       if (currentLayer === "precip") return [["#2a3a30","0mm"],["#3a6e52","0–1mm"],["#4caf7d","1–5mm"],["#5b9cf6","5–15mm"],["#e05252",">15mm"]];
       return [["#5b9cf6","<10°C"],["#4caf7d","10–18°C"],["#d4a017","18–24°C"],["#dc5a1e","24–30°C"],["#e05252",">30°C"]];
     }
-
-    // ── Beállítások betöltése (admin → notox-settings-meteo) ────────────────
-    function loadMeteoSettings() {
-      try { return JSON.parse(localStorage.getItem("notox-settings-meteo") || "{}"); } catch { return {}; }
-    }
-
-    // ── Map init ──────────────────────────────────────────────────────────
-    let tileLayer = null;
-
-    function isLightTheme() {
-      // Ellenőrzi mind a <html>-t mind a <body>-t (shell.js mindkettőt módosítja)
-      return document.documentElement.classList.contains("theme-light") ||
-             document.body?.classList.contains("theme-light");
-    }
-    function tileUrl() {
-      return isLightTheme()
-        ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-        : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-    }
-    function swapTileLayer() {
-      if (!map) return;
-      if (tileLayer) map.removeLayer(tileLayer);
-      tileLayer = L.tileLayer(tileUrl(), {
-        attribution: "© OpenStreetMap, © CARTO", maxZoom: 14,
-      }).addTo(map);
-      tileLayer.bringToBack();
-    }
-
-    function initMap() {
-      const s = loadMeteoSettings();
-      const lat  = s.defaultLat  ?? 47.15;
-      const lon  = s.defaultLon  ?? 19.5;
-      const zoom = s.defaultZoom ?? 7;
-      map = L.map("meteo-map", { center: [lat, lon], zoom, preferCanvas: true });
-      swapTileLayer();
-
-      // Témaváltás figyelése — <html> és <body> is változhat (shell.js)
-      const obs = new MutationObserver(swapTileLayer);
-      obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-      obs.observe(document.body,            { attributes: true, attributeFilter: ["class"] });
-    }
-
-    // ── Draw grid + station labels ────────────────────────────────────────
-    function hasData(d) {
-      if (currentLayer === "rh")     return d.rh_mean !== null;
-      if (currentLayer === "precip") return d.precip  !== null;
-      return d.tmean !== null;
-    }
-
-    function drawGrid() {
-      gridLayers.forEach(l => map.removeLayer(l));
-      gridLayers = [];
-
-      gridData.forEach(d => {
-        if (!hasData(d)) return;
-
-        const isZone = d.cell.isZone;
-        const rect = L.rectangle(
-          [[d.cell.latMin, d.cell.lonMin], [d.cell.latMax, d.cell.lonMax]],
-          isZone
-            ? { color: "rgba(167,139,250,0.5)", weight: 0.8, fillColor: cellColor(d), fillOpacity: 0.72 }
-            : { color: "transparent", weight: 0,             fillColor: cellColor(d), fillOpacity: 0.45 }
-        ).addTo(map);
-        const zoneLabel = isZone
-          ? `<span style="color:#a78bfa;font-weight:700;">📍 ${d.cell.zoneName}</span> · 7 km rács<br>` : "";
-        rect.bindTooltip(`<div style="font-family:monospace;font-size:11px;line-height:1.8;color:#cdd8cc;">
-          ${zoneLabel}<b>${d.cell.centerLat}°N ${d.cell.centerLon}°E</b><br>
-          Hőm.: ${d.tmean !== null ? d.tmean.toFixed(1) : "—"} °C &nbsp;
-          Párat.: ${d.rh_mean !== null ? Math.round(d.rh_mean) : "—"} %<br>
-          Csapadék: ${d.precip !== null ? d.precip.toFixed(1) : "—"} mm
-        </div>`, { sticky: true, opacity: 0.95 });
-        gridLayers.push(rect);
-      });
-
-      // Station CircleMarker — pontos koordináta-alapú elhelyezés
-      stationMarkers.forEach(m => { try { map.removeLayer(m); } catch {} });
-      stationMarkers = [];
-      stationData.forEach(sd => {
-        const dot = L.circleMarker([sd.station.lat, sd.station.lon], {
-          radius: 4, color: "#0b0f0d", weight: 1.5,
-          fillColor: tempColor(sd.tmean), fillOpacity: 1,
-        }).addTo(map);
-        dot.bindTooltip(`<div style="font-family:monospace;font-size:11px;line-height:1.8;color:#cdd8cc;">
-          <b>${sd.station.name}</b><br>
-          Hőm.: ${sd.tmean !== null ? sd.tmean.toFixed(1) : "—"} °C &nbsp;
-          Párat.: ${sd.rh_mean !== null ? Math.round(sd.rh_mean) : "—"} %<br>
-          Csapadék: ${sd.precip !== null ? sd.precip.toFixed(1) : "—"} mm
-        </div>`, { sticky: true, opacity: 0.95 });
-        stationMarkers.push(dot);
-      });
-
+    function updateLegend() {
       document.getElementById("grid-legend").innerHTML =
         legendItems().map(([c, l]) =>
           `<div class="legend-swatch" style="background:${c};"></div><span>${l}</span>&nbsp;`
         ).join("");
+    }
+
+    // ── Beállítások betöltése ────────────────────────────────────────────
+    function loadMeteoSettings() {
+      try { return JSON.parse(localStorage.getItem("notox-settings-meteo") || "{}"); } catch { return {}; }
+    }
+
+    // ── MapLibre — téma és stílus ─────────────────────────────────────────
+    function isLightTheme() {
+      return document.documentElement.classList.contains("theme-light") ||
+             document.body?.classList.contains("theme-light");
+    }
+    function cartoTiles() {
+      const base = isLightTheme() ? "light_all" : "dark_all";
+      return [`https://a.basemaps.cartocdn.com/${base}/{z}/{x}/{y}.png`,
+              `https://b.basemaps.cartocdn.com/${base}/{z}/{x}/{y}.png`];
+    }
+    function getMapStyle() {
+      return {
+        version: 8,
+        sources: {
+          carto: { type: "raster", tiles: cartoTiles(), tileSize: 256,
+                   attribution: "© OpenStreetMap · © CARTO" }
+        },
+        layers: [{ id: "carto-base", type: "raster", source: "carto" }]
+      };
+    }
+
+    // MapLibre data-driven color expressions — nincs JS-oldalú újrarajzolás rétegváltásnál
+    function colorExpr(layer) {
+      if (layer === "rh") return ["case",
+        ["==", ["get","rh_mean"], null], "rgba(0,0,0,0)",
+        [">",  ["get","rh_mean"], 85],   "#5b9cf6",
+        [">",  ["get","rh_mean"], 70],   "#4caf7d",
+        [">",  ["get","rh_mean"], 55],   "#d4a017",
+        "#dc5a1e"
+      ];
+      if (layer === "precip") return ["case",
+        ["==", ["get","precip"], null], "rgba(0,0,0,0)",
+        ["==", ["get","precip"], 0],    "#2a3a30",
+        [">",  ["get","precip"], 15],   "#e05252",
+        [">",  ["get","precip"], 5],    "#5b9cf6",
+        [">",  ["get","precip"], 1],    "#4caf7d",
+        "#3a6e52"
+      ];
+      return ["case",                                    // temp
+        ["==", ["get","tmean"], null], "rgba(0,0,0,0)",
+        [">",  ["get","tmean"], 30],   "#e05252",
+        [">",  ["get","tmean"], 24],   "#dc5a1e",
+        [">",  ["get","tmean"], 18],   "#d4a017",
+        [">",  ["get","tmean"], 10],   "#4caf7d",
+        "#5b9cf6"
+      ];
+    }
+
+    // ── GeoJSON builders ──────────────────────────────────────────────────
+    function buildGridGeoJSON() {
+      return {
+        type: "FeatureCollection",
+        features: gridData
+          .filter(d => d.tmean !== null || d.rh_mean !== null || d.precip !== null)
+          .map(d => ({
+            type: "Feature",
+            geometry: { type: "Polygon", coordinates: [[
+              [d.cell.lonMin, d.cell.latMin], [d.cell.lonMax, d.cell.latMin],
+              [d.cell.lonMax, d.cell.latMax], [d.cell.lonMin, d.cell.latMax],
+              [d.cell.lonMin, d.cell.latMin],
+            ]]},
+            properties: {
+              tmean:    d.tmean,    tmin:  d.tmin,  tmax: d.tmax,
+              rh_mean:  d.rh_mean,  precip: d.precip,
+              lat:      d.cell.centerLat, lon: d.cell.centerLon,
+              isZone:   !!d.cell.isZone,
+              zoneName: d.cell.zoneName || null,
+            },
+          })),
+      };
+    }
+    function buildStationsGeoJSON() {
+      return {
+        type: "FeatureCollection",
+        features: stationData.map(sd => ({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [sd.station.lon, sd.station.lat] },
+          properties: {
+            name: sd.station.name,
+            tmean: sd.tmean, tmin: sd.tmin, tmax: sd.tmax,
+            rh_mean: sd.rh_mean, precip: sd.precip,
+          },
+        })),
+      };
+    }
+
+    // ── Adatrétegek hozzáadása a térképhez ───────────────────────────────
+    const _popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, maxWidth: "280px" });
+
+    function addDataLayers() {
+      const empty = { type: "FeatureCollection", features: [] };
+
+      // Rács — fill + zóna keret
+      map.addSource("grid", { type: "geojson", data: empty });
+      map.addLayer({
+        id: "grid-fill", type: "fill", source: "grid",
+        paint: {
+          "fill-color":   colorExpr(currentLayer),
+          "fill-opacity": ["case", ["==", ["get","isZone"], true], 0.72, 0.45],
+        },
+      });
+      map.addLayer({
+        id: "grid-zone-line", type: "line", source: "grid",
+        filter: ["==", ["get","isZone"], true],
+        paint: { "line-color": "rgba(167,139,250,0.6)", "line-width": 0.8 },
+      });
+
+      // Állomások
+      map.addSource("stations", { type: "geojson", data: empty });
+      map.addLayer({
+        id: "stations-circle", type: "circle", source: "stations",
+        paint: {
+          "circle-radius": 5,
+          "circle-color": ["case",
+            [">", ["coalesce",["get","tmean"],-999], 30], "#e05252",
+            [">", ["coalesce",["get","tmean"],-999], 24], "#dc5a1e",
+            [">", ["coalesce",["get","tmean"],-999], 18], "#d4a017",
+            [">", ["coalesce",["get","tmean"],-999], 10], "#4caf7d",
+            "#5b9cf6"
+          ],
+          "circle-stroke-color": "#0b0f0d",
+          "circle-stroke-width": 1.5,
+        },
+      });
+
+      // Tooltip — rács
+      map.on("mousemove", "grid-fill", e => {
+        if (!e.features.length) return;
+        map.getCanvas().style.cursor = "crosshair";
+        const p = e.features[0].properties;
+        const zl = p.isZone && p.zoneName
+          ? `<span style="color:#a78bfa;font-weight:700;">📍 ${p.zoneName}</span> · 7 km rács<br>` : "";
+        _popup.setLngLat(e.lngLat).setHTML(
+          `${zl}<b>${p.lat?.toFixed(4)}°N ${p.lon?.toFixed(4)}°E</b><br>
+           Hőm.: ${p.tmean !== null ? Number(p.tmean).toFixed(1) : "—"} °C &nbsp;
+           Párat.: ${p.rh_mean !== null ? Math.round(p.rh_mean) : "—"} %<br>
+           Csapadék: ${p.precip !== null ? Number(p.precip).toFixed(1) : "—"} mm`
+        ).addTo(map);
+      });
+      map.on("mouseleave", "grid-fill",   () => { map.getCanvas().style.cursor = ""; _popup.remove(); });
+
+      // Tooltip — állomások
+      map.on("mousemove", "stations-circle", e => {
+        if (!e.features.length) return;
+        map.getCanvas().style.cursor = "pointer";
+        const p = e.features[0].properties;
+        _popup.setLngLat(e.lngLat).setHTML(
+          `<b>${p.name}</b><br>
+           Hőm.: ${p.tmean !== null ? Number(p.tmean).toFixed(1) : "—"} °C &nbsp;
+           Párat.: ${p.rh_mean !== null ? Math.round(p.rh_mean) : "—"} %<br>
+           Csapadék: ${p.precip !== null ? Number(p.precip).toFixed(1) : "—"} mm`
+        ).addTo(map);
+      });
+      map.on("mouseleave", "stations-circle", () => { map.getCanvas().style.cursor = ""; _popup.remove(); });
+
+      // Ha már van adat (cache-ből töltődött), azonnal megjelenítjük
+      if (gridData.length) updateMapSources();
+    }
+
+    // ── drawGrid alias → updateMapSources ────────────────────────────────
+    function updateMapSources() {
+      if (!map || !map.getSource("grid")) return;
+      map.getSource("grid").setData(buildGridGeoJSON());
+      map.getSource("stations").setData(buildStationsGeoJSON());
+      updateLegend();
+    }
+    const drawGrid = updateMapSources; // visszafelé kompatibilitás
+
+    // ── Témaváltás → teljes stíluscsere ──────────────────────────────────
+    function swapTileLayer() {
+      if (!map) return;
+      map.setStyle(getMapStyle());
+      map.once("style.load", addDataLayers);
+    }
+
+    // ── Térkép inicializálás ──────────────────────────────────────────────
+    function initMap() {
+      const s    = loadMeteoSettings();
+      const lat  = s.defaultLat  ?? 47.15;
+      const lon  = s.defaultLon  ?? 19.5;
+      const zoom = s.defaultZoom ?? 7;
+
+      map = new maplibregl.Map({
+        container: "meteo-map",
+        style:     getMapStyle(),
+        center:    [lon, lat],   // MapLibre: [lng, lat]
+        zoom,
+        attributionControl: false,
+      });
+      map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+      map.on("load", addDataLayers);
+
+      // Témaváltás figyelése
+      const obs = new MutationObserver(swapTileLayer);
+      obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+      obs.observe(document.body,            { attributes: true, attributeFilter: ["class"] });
     }
 
     // ── Fetch ─────────────────────────────────────────────────────────────
@@ -829,7 +911,11 @@
         document.querySelectorAll(".layer-btn").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
         currentLayer = btn.dataset.layer;
-        if (gridData.length) drawGrid();
+        // MapLibre: csak a paint property frissül, nincs újrarajzolás
+        if (map && map.getLayer("grid-fill")) {
+          map.setPaintProperty("grid-fill", "fill-color", colorExpr(currentLayer));
+        }
+        updateLegend();
       });
     });
 
