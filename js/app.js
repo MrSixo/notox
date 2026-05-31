@@ -110,35 +110,85 @@ function selectedModelIds() {
 }
 
 // ── Leaflet map ───────────────────────────────────────────────────────────
-function _mapTileUrl() {
-  return (document.documentElement.classList.contains("theme-light") ||
-          document.body?.classList.contains("theme-light"))
-    ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-    : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+function _isLight() {
+  return document.documentElement.classList.contains("theme-light") ||
+         document.body?.classList.contains("theme-light");
+}
+function _cartoTiles() {
+  const t = _isLight() ? "light_all" : "dark_all";
+  return [`https://a.basemaps.cartocdn.com/${t}/{z}/{x}/{y}.png`,
+          `https://b.basemaps.cartocdn.com/${t}/{z}/{x}/{y}.png`];
+}
+function _mapStyle() {
+  return {
+    version: 8,
+    sources: { carto: { type: "raster", tiles: _cartoTiles(), tileSize: 256,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attribution">CARTO</a>' } },
+    layers:  [{ id: "carto-base", type: "raster", source: "carto" }],
+  };
 }
 
 function initMap() {
-  map = L.map("map", { zoomControl: true, attributionControl: false }).setView([47.2, 19.4], 7);
-  const tl = L.tileLayer(_mapTileUrl(), { maxZoom: 19 }).addTo(map);
-  new MutationObserver(() => {
-    tl.setUrl(_mapTileUrl());
-  }).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-  marker = L.circleMarker([47.4979, 19.0402], {
-    radius: 8, color: "#4caf7d", fillColor: "#4caf7d", fillOpacity: 0.8, weight: 2,
-  }).addTo(map);
+  map = new maplibregl.Map({
+    container: "map",
+    style:  _mapStyle(),
+    center: [19.4, 47.2],   // [lng, lat]
+    zoom:   7,
+    attributionControl: false,
+  });
+  map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+
+  // Helyszínjelölő — GeoJSON pont
+  map.on("load", () => {
+    map.addSource("loc", { type: "geojson",
+      data: { type: "Feature", geometry: { type: "Point", coordinates: [19.0402, 47.4979] }, properties: {} }
+    });
+    map.addLayer({ id: "loc-circle", type: "circle", source: "loc",
+      paint: { "circle-radius": 9, "circle-color": "#4caf7d",
+               "circle-stroke-color": "#0b0f0d", "circle-stroke-width": 2, "circle-opacity": 0.85 }
+    });
+  });
+
+  // Térkép kattintás → helyszín beállítás
   map.on("click", e => {
-    const { lat, lng } = e.latlng;
+    const { lat, lng } = e.lngLat;
     setLocation(lat, lng, `${lat.toFixed(3)}, ${lng.toFixed(3)}`);
     document.getElementById("sel-location").value = "custom";
     document.getElementById("custom-row").style.display = "flex";
     document.getElementById("inp-lat").value = lat.toFixed(4);
     document.getElementById("inp-lon").value = lng.toFixed(4);
   });
+
+  // Témaváltás figyelése
+  const obs = new MutationObserver(() => {
+    map.setStyle(_mapStyle());
+    map.once("style.load", () => {
+      map.addSource("loc", { type: "geojson",
+        data: { type: "Feature", geometry: { type: "Point", coordinates: _markerCoords }, properties: {} }
+      });
+      map.addLayer({ id: "loc-circle", type: "circle", source: "loc",
+        paint: { "circle-radius": 9, "circle-color": "#4caf7d",
+                 "circle-stroke-color": "#0b0f0d", "circle-stroke-width": 2, "circle-opacity": 0.85 }
+      });
+    });
+  });
+  obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  obs.observe(document.body,            { attributes: true, attributeFilter: ["class"] });
 }
 
+let _markerCoords = [19.0402, 47.4979]; // [lng, lat]
+
 function setLocation(lat, lon, label) {
-  marker.setLatLng([lat, lon]);
-  map.setView([lat, lon], map.getZoom() < 8 ? 9 : map.getZoom());
+  _markerCoords = [lon, lat];
+  if (map && map.getSource("loc")) {
+    map.getSource("loc").setData({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [lon, lat] },
+      properties: {},
+    });
+  }
+  const zoom = map ? (map.getZoom() < 8 ? 9 : map.getZoom()) : 9;
+  if (map) map.flyTo({ center: [lon, lat], zoom, duration: 500 });
   document.getElementById("loc-label").textContent = label;
 }
 
