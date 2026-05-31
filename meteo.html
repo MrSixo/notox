@@ -65,7 +65,7 @@
       <div class="page-head">
         <div>
           <h1>Meteorológia</h1>
-          <div class="sub">Rácsos előrejelzés · Open-Meteo ICON-EU · <span id="refresh-lbl">betöltés…</span></div>
+          <div class="sub">Rácsos előrejelzés · <span id="sub-model">ICON-EU</span> · <span id="refresh-lbl">betöltés…</span></div>
         </div>
         <div class="right">
           <div class="spinner" id="spinner"></div>
@@ -211,6 +211,7 @@
   <script src="/js/config.js"></script>
   <script src="/js/shell.js"></script>
   <script src="/js/openmeteo.js"></script>
+  <script src="/js/dwd.js"></script>
   <script>
     // ── Grid: Hungary — lépésköz admin-ból konfig ─────────────────────────
     function getGridStep() {
@@ -565,36 +566,54 @@
       setSpinner(true);
       document.getElementById("refresh-lbl").textContent = "betöltés…";
       try {
-        const cells = buildGrid();
+        const cells       = buildGrid();
         const cellLocs    = cells.map(c => ({ lat: c.centerLat, lon: c.centerLon }));
         const stationLocs = STATIONS.map(s => ({ lat: s.lat, lon: s.lon }));
 
-        // 1) Állomások betöltése először — kevés pont, gyors
-        const stationSeries = await fetchWeatherBulk(stationLocs, 1);
-        stationData = STATIONS.map((st, i) => ({ station: st, ...pickToday(stationSeries[i]) }));
+        const dwdOk = await isDWDAvailable().catch(() => false);
 
-        // 2) Rács inicializálása null-okkal (progresszív megjelenítés alapja)
-        gridData = cells.map(cell => ({
-          cell, tmean: null, tmin: null, tmax: null, rh_mean: null, precip: null,
-        }));
+        if (dwdOk) {
+          // ── DWD ICON-EU 7 km (GitHub Pages statikus JSON) ───────────────
+          document.getElementById("sub-model").textContent = "DWD ICON-EU · 7 km";
+          document.getElementById("refresh-lbl").textContent = "DWD ICON-EU betöltés…";
 
-        // 3) Progresszív betöltés: minden chunk-csoport után azonnali kirajzolás
-        await fetchWeatherBulk(cellLocs, 1, (results, done, total) => {
-          results.forEach((series, i) => {
-            if (series) gridData[i] = { cell: cells[i], ...pickToday(series) };
+          const [cellSeries, stationSeries] = await Promise.all([
+            fetchWeatherBulkDWD(cellLocs, 5),
+            fetchWeatherBulkDWD(stationLocs, 5),
+          ]);
+          gridData    = cells.map((cell, i) => ({ cell, ...pickToday(cellSeries[i]) }));
+          stationData = STATIONS.map((st, i) => ({ station: st, ...pickToday(stationSeries[i]) }));
+
+        } else {
+          // ── Fallback: Open-Meteo 0.25° (progresszív) ────────────────────
+          document.getElementById("sub-model").textContent = "Open-Meteo ICON-EU · 0.25°";
+          document.getElementById("refresh-lbl").textContent = "Open-Meteo betöltés…";
+
+          const stationSeries = await fetchWeatherBulk(stationLocs, 1);
+          stationData = STATIONS.map((st, i) => ({ station: st, ...pickToday(stationSeries[i]) }));
+
+          gridData = cells.map(cell => ({
+            cell, tmean: null, tmin: null, tmax: null, rh_mean: null, precip: null,
+          }));
+          await fetchWeatherBulk(cellLocs, 1, (results, done, total) => {
+            results.forEach((series, i) => {
+              if (series) gridData[i] = { cell: cells[i], ...pickToday(series) };
+            });
+            drawGrid();
+            updateKPIs();
+            document.getElementById("refresh-lbl").textContent =
+              `Open-Meteo: ${done}/${total} csomag (${Math.round(done / total * 100)}%)…`;
           });
-          drawGrid();
-          updateKPIs();
-          document.getElementById("refresh-lbl").textContent =
-            `Betöltés: ${done}/${total} csomag (${Math.round(done / total * 100)}%)…`;
-        });
+        }
 
         saveCache({ gridData, stationData, ts: Date.now() });
         drawGrid();
         updateTable();
         updateKPIs();
+        const loaded = gridData.filter(d => d.tmean !== null).length;
         document.getElementById("refresh-lbl").textContent =
-          `Frissítve: ${new Date().toLocaleTimeString("hu-HU")} · ${gridData.filter(d => d.tmean !== null).length}/${cells.length} cella`;
+          `Frissítve: ${new Date().toLocaleTimeString("hu-HU")} · ${loaded}/${cells.length} cella`;
+
       } catch (err) {
         console.error("[loadAll] hiba:", err);
         document.getElementById("refresh-lbl").textContent = "Betöltési hiba — kattints a Frissítésre";

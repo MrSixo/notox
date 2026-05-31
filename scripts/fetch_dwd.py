@@ -133,7 +133,8 @@ def open_clipped(path: Path):
 def build_json(run: str) -> dict:
     run_dt = datetime.strptime(run, "%Y%m%d%H").replace(tzinfo=timezone.utc)
     today  = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    days   = [(run_dt + timedelta(days=d + 1)).strftime("%Y-%m-%d") for d in range(5)]
+    # step 024 = run napjának max/min T → run_dt + 0 nap = mai dátum
+    days   = [(run_dt + timedelta(days=d)).strftime("%Y-%m-%d") for d in range(5)]
 
     result = {
         "ts":    datetime.now(timezone.utc).isoformat(),
