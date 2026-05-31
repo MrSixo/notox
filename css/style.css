@@ -188,8 +188,8 @@ body.app .page-wrap {
 
 .sb-item {
   display: flex; align-items: center; gap: 10px;
-  padding: 7px 8px; border-radius: var(--radius);
-  font-size: 13px; color: var(--text-muted);
+  padding: 8px 10px; border-radius: var(--radius);
+  font-size: 15px; font-weight: 500; color: var(--text-muted);
   transition: background .12s, color .12s;
   white-space: nowrap; overflow: hidden;
 }
