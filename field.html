@@ -134,8 +134,30 @@
                 <option value="other">Egyéb</option>
               </select>
             </div>
+            <div class="field" style="grid-column:1/-1;">
+              <label>Térinformatikai fájl importálása (opcionális)</label>
+              <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <label class="btn" style="cursor:pointer;margin:0;">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 2v9M5 8l3 3 3-3"/><path d="M3 13h10"/></svg>
+                  GIS fájl feltöltése
+                  <input id="f-gis-file" type="file" accept=".geojson,.json,.kml,.gpx,.zip" style="display:none;" />
+                </label>
+                <span id="f-gis-status" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">
+                  GeoJSON · KML · GPX · Shapefile (.zip)
+                </span>
+              </div>
+              <!-- Előnézeti térkép -->
+              <div id="f-map-wrap" style="display:none;margin-top:10px;border-radius:var(--radius);overflow:hidden;height:220px;position:relative;">
+                <div id="f-map" style="height:100%;"></div>
+                <button id="f-map-clear" style="position:absolute;top:8px;right:8px;z-index:10;"
+                  class="btn btn-sm">Törlés</button>
+              </div>
+              <!-- Számított adatok -->
+              <div id="f-gis-info" style="display:none;margin-top:8px;font-family:var(--mono);font-size:11px;
+                color:var(--text-muted);background:var(--bg-2);border-radius:var(--radius);padding:8px 12px;"></div>
+            </div>
             <div class="field">
-              <label>Szélesség (lat)</label>
+              <label>Szélesség (lat) <span style="font-size:9px;color:var(--text-dim);">— vagy centroid importból</span></label>
               <input id="f-lat" type="number" step="0.0001" placeholder="47.5977" style="width:100%;" />
             </div>
             <div class="field">
@@ -232,6 +254,9 @@
   </main>
 
   <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
+  <link  rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/shpjs@6.1.0/dist/shp.js"></script>
   <script src="/js/config.js"></script>
   <script src="/js/shell.js"></script>
   <script src="/js/openmeteo.js"></script>
@@ -337,7 +362,7 @@
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
           </button>
           <div class="fc-name">${f.name}</div>
-          <div class="fc-meta">${f.lat?.toFixed(4)}, ${f.lon?.toFixed(4)} · ${CROP_LABELS[f.crop] || f.crop}</div>
+          <div class="fc-meta">${f.lat?.toFixed(4)}, ${f.lon?.toFixed(4)} · ${CROP_LABELS[f.crop] || f.crop}${f.area_ha ? ` · ${f.area_ha.toFixed(1)} ha` : ""}</div>
           <div class="fc-tags">
             ${f.prevCrop && f.prevCrop !== "unknown" ? `<span class="tag">↩ ${CROP_LABELS[f.prevCrop]}</span>` : ""}
             ${soilCount  ? `<span class="tag warn">🧫 ${soilCount} talaj</span>`  : ""}
@@ -409,6 +434,12 @@
     const soilDiseases  = [...document.querySelectorAll("#soil-diseases input:checked")].map(cb => cb.value);
     const plantDiseases = [...document.querySelectorAll("#plant-diseases input:checked")].map(cb => cb.value);
 
+    // GIS polygon info (opcionális)
+    const polygon  = _gisPolygon || null;
+    const area_ha  = polygon
+      ? _calcAreaHa(polygon.geometry.coordinates[0])
+      : null;
+
     const fields = loadFields();
     if (_editingId) {
       const idx = fields.findIndex(f => f.id === _editingId);
@@ -418,9 +449,10 @@
           prevCrop:     document.getElementById("f-prev-crop").value,
           notes:        document.getElementById("f-notes").value.trim(),
           soilDiseases, plantDiseases,
+          polygon, area_ha,
         };
         delete _riskCache[_editingId];
-        auditLog("field_update", `${name} (${lat.toFixed(3)}, ${lon.toFixed(3)})`);
+        auditLog("field_update", `${name} (${lat.toFixed(3)}, ${lon.toFixed(3)})${area_ha ? ` · ${area_ha.toFixed(1)} ha` : ""}`);
       }
     } else {
       fields.push({
@@ -429,9 +461,10 @@
         prevCrop:     document.getElementById("f-prev-crop").value,
         notes:        document.getElementById("f-notes").value.trim(),
         soilDiseases, plantDiseases,
+        polygon, area_ha,
         createdAt:    new Date().toISOString(),
       });
-      auditLog("field_save", `${name} (${lat.toFixed(3)}, ${lon.toFixed(3)})`);
+      auditLog("field_save", `${name} (${lat.toFixed(3)}, ${lon.toFixed(3)})${area_ha ? ` · ${area_ha.toFixed(1)} ha` : ""}`);
     }
     saveFields(fields);
     hideForm();
@@ -527,6 +560,165 @@
     renderFields();
   }
 
+  // ── GIS Import ─────────────────────────────────────────────────────────────
+  let _gisMap = null;
+  let _gisPolygon = null; // tárolt GeoJSON Feature
+
+  function _isLightTheme() {
+    return document.documentElement.classList.contains("theme-light") ||
+           document.body?.classList.contains("theme-light");
+  }
+
+  function _initGisMap() {
+    if (_gisMap) return;
+    const style = {
+      version: 8,
+      sources: { carto: { type: "raster", tileSize: 256,
+        tiles: [(_isLightTheme()
+          ? "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
+          : "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png")] } },
+      layers: [{ id: "carto", type: "raster", source: "carto" }],
+    };
+    _gisMap = new maplibregl.Map({ container: "f-map", style, center: [19.5, 47.2], zoom: 7 });
+    _gisMap.on("load", () => {
+      _gisMap.addSource("field-poly", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+      _gisMap.addLayer({ id: "field-fill", type: "fill", source: "field-poly",
+        paint: { "fill-color": "#4caf7d", "fill-opacity": 0.3 } });
+      _gisMap.addLayer({ id: "field-line", type: "line", source: "field-poly",
+        paint: { "line-color": "#4caf7d", "line-width": 2 } });
+      if (_gisPolygon) _showGisPolygon(_gisPolygon);
+    });
+  }
+
+  function _showGisPolygon(feature) {
+    _gisPolygon = feature;
+    if (!_gisMap || !_gisMap.getSource("field-poly")) return;
+    _gisMap.getSource("field-poly").setData({ type: "FeatureCollection", features: [feature] });
+    // Zoom to bounds
+    const coords = feature.geometry.type === "Polygon"
+      ? feature.geometry.coordinates[0]
+      : feature.geometry.coordinates.flat();
+    if (!coords.length) return;
+    const lons = coords.map(c => c[0]), lats = coords.map(c => c[1]);
+    _gisMap.fitBounds(
+      [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+      { padding: 30, duration: 600 }
+    );
+  }
+
+  // Területszámítás (Shoelace, m² → ha)
+  function _calcAreaHa(coords) {
+    const latRad = coords[0][1] * Math.PI / 180;
+    const mLat = 111132, mLon = 111132 * Math.cos(latRad);
+    const m = coords.map(([ln, la]) => [ln * mLon, la * mLat]);
+    let area = 0;
+    for (let i = 0, j = m.length - 1; i < m.length; j = i++) {
+      area += (m[j][0] + m[i][0]) * (m[j][1] - m[i][1]);
+    }
+    return Math.abs(area / 2) / 10000;
+  }
+
+  // Centroid (átlag koordináta)
+  function _centroid(coords) {
+    const n = coords.length;
+    return [
+      coords.reduce((s, c) => s + c[0], 0) / n,
+      coords.reduce((s, c) => s + c[1], 0) / n,
+    ];
+  }
+
+  function _applyGisFeature(feature) {
+    if (!feature || !feature.geometry) return;
+    let coords;
+    if (feature.geometry.type === "Polygon") {
+      coords = feature.geometry.coordinates[0];
+    } else if (feature.geometry.type === "MultiPolygon") {
+      // Legnagyobb polygon kiválasztása
+      let best = feature.geometry.coordinates[0][0];
+      feature.geometry.coordinates.forEach(poly => {
+        if (poly[0].length > best.length) best = poly[0];
+      });
+      coords = best;
+      feature = { type: "Feature", geometry: { type: "Polygon", coordinates: [coords] }, properties: feature.properties || {} };
+    } else return;
+
+    const area   = _calcAreaHa(coords);
+    const center = _centroid(coords);
+    document.getElementById("f-lat").value = center[1].toFixed(6);
+    document.getElementById("f-lon").value = center[0].toFixed(6);
+
+    const info = document.getElementById("f-gis-info");
+    info.style.display = "";
+    info.textContent = `Terület: ${area.toFixed(2)} ha · Centroid: ${center[1].toFixed(5)}°N ${center[0].toFixed(5)}°E · ${coords.length - 1} sarokpont`;
+
+    document.getElementById("f-map-wrap").style.display = "";
+    _initGisMap();
+    _showGisPolygon(feature);
+    _gisPolygon = feature;
+  }
+
+  // GeoJSON parse
+  function _parseGeoJSON(text) {
+    const json = JSON.parse(text);
+    if (json.type === "Feature") return json;
+    if (json.type === "FeatureCollection" && json.features.length) return json.features[0];
+    if (json.type === "Polygon" || json.type === "MultiPolygon") return { type: "Feature", geometry: json, properties: {} };
+    throw new Error("Nem található polygon a GeoJSON-ban.");
+  }
+
+  // KML parse
+  function _parseKML(text) {
+    const doc  = new DOMParser().parseFromString(text, "text/xml");
+    const coords = doc.querySelector("coordinates");
+    if (!coords) throw new Error("Nem található coordinates a KML-ben.");
+    const ring = coords.textContent.trim().split(/\s+/).map(s => {
+      const [lon, lat] = s.split(",").map(Number);
+      return [lon, lat];
+    });
+    return { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} };
+  }
+
+  // GPX parse
+  function _parseGPX(text) {
+    const doc  = new DOMParser().parseFromString(text, "text/xml");
+    const pts  = [...doc.querySelectorAll("trkpt, rtept, wpt")];
+    if (!pts.length) throw new Error("Nem található pont a GPX-ben.");
+    const ring = pts.map(p => [+p.getAttribute("lon"), +p.getAttribute("lat")]);
+    if (ring[0][0] !== ring[ring.length - 1][0]) ring.push(ring[0]); // zárd be
+    return { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} };
+  }
+
+  async function _handleGisFile(file) {
+    const status = document.getElementById("f-gis-status");
+    status.textContent = "Feldolgozás…";
+    status.style.color = "var(--text-muted)";
+    try {
+      const ext = file.name.split(".").pop().toLowerCase();
+      let feature;
+
+      if (ext === "zip") {
+        // Shapefile (.zip tartalmaz .shp + .dbf + .prj)
+        const buf = await file.arrayBuffer();
+        const geojson = await shp(buf);
+        const fc = Array.isArray(geojson) ? geojson[0] : geojson;
+        feature = fc.features?.[0] || fc;
+      } else {
+        const text = await file.text();
+        if (ext === "kml")                     feature = _parseKML(text);
+        else if (ext === "gpx")                feature = _parseGPX(text);
+        else                                   feature = _parseGeoJSON(text); // geojson / json
+      }
+
+      _applyGisFeature(feature);
+      status.textContent = `✓ ${file.name} betöltve`;
+      status.style.color = "var(--green)";
+      auditLog("gis_import", file.name);
+    } catch (e) {
+      status.textContent = `Hiba: ${e.message}`;
+      status.style.color = "#e05252";
+    }
+  }
+
   // ── Init ───────────────────────────────────────────────────────────────────
   document.getElementById("btn-add").onclick     = () => showForm();
   document.getElementById("btn-save-field").onclick  = saveField;
@@ -534,6 +726,23 @@
   document.getElementById("btn-close-detail").onclick = () => {
     document.getElementById("detail-wrap").style.display = "none";
   };
+
+  document.getElementById("f-gis-file").addEventListener("change", e => {
+    const file = e.target.files[0];
+    if (file) _handleGisFile(file);
+    e.target.value = ""; // reset hogy újra feltölthető legyen
+  });
+
+  document.getElementById("f-map-clear").addEventListener("click", () => {
+    _gisPolygon = null;
+    document.getElementById("f-map-wrap").style.display = "none";
+    document.getElementById("f-gis-info").style.display = "none";
+    document.getElementById("f-gis-status").textContent = "GeoJSON · KML · GPX · Shapefile (.zip)";
+    document.getElementById("f-gis-status").style.color = "var(--text-dim)";
+    if (_gisMap && _gisMap.getSource("field-poly")) {
+      _gisMap.getSource("field-poly").setData({ type: "FeatureCollection", features: [] });
+    }
+  });
 
   renderFields();
   loadAllRisks();
