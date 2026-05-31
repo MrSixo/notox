@@ -233,6 +233,7 @@
       { id: "__coakley1988",   name: "Sárgarozsda",               params: { topt: 11,   sigma: 5, rh_thr: 80, precip_min: 0,   risk_thr: 30 } },
       { id: "__madden1981",    name: "Levélrozsda",               params: { topt: 20,   sigma: 6, rh_thr: 75, precip_min: 0,   risk_thr: 35 } },
       { id: "__pscheidt1993",  name: "Lisztharmat",               params: { topt: 21,   sigma: 5, rh_thr: 55, precip_min: 0,   risk_thr: 40 } },
+      { id: "__afla_maize",    name: "Aflatoxin AFB1 (AFLA-maize)", params: { type: "afla_maize", t_opt: 30, t_sigma: 6, rh_thr: 60, rh_opt: 80, stress_t: 35, stress_rh: 50, afi_threshold: 95, risk_thr: 40 } },
     ];
     function loadAllModels() {
       try {
@@ -243,8 +244,17 @@
     function getModel(modelId) {
       return loadAllModels().find(m => m.id === modelId) || BUILTIN_MODELS[0];
     }
-    function runModelDay(params, tmean, rh, precip) {
+    function runModelDay(params, tmean, rh, precip, tmax) {
       if (tmean === null || rh === null) return 0;
+      if (params.type === "afla_maize") {
+        const tF = Math.exp(-0.5 * Math.pow((tmean - (params.t_opt ?? 30)) / (params.t_sigma ?? 6), 2));
+        const rhF = rh >= (params.rh_opt ?? 80) ? 1
+          : rh >= (params.rh_thr ?? 60) ? (rh - (params.rh_thr ?? 60)) / ((params.rh_opt ?? 80) - (params.rh_thr ?? 60))
+          : 0;
+        const effTmax = tmax ?? (tmean + 5);
+        const stress  = effTmax >= (params.stress_t ?? 35) && rh < (params.stress_rh ?? 50);
+        return Math.min(1, tF * rhF * (stress ? 1.5 : 1.0));
+      }
       if (params.type === "linear_t") {
         const dd = Math.max(0, tmean - (params.t_base ?? 10));
         const tF = Math.min(1, dd / (params.dd_max ?? 15));
@@ -311,7 +321,7 @@
 
       const model   = getModel(loc.modelId);
       const risk    = todayActual !== null
-        ? Math.round(runModelDay(model.params, todayActual.tmean, todayActual.rh_mean, todayActual.precip) * 100)
+        ? Math.round(runModelDay(model.params, todayActual.tmean, todayActual.rh_mean, todayActual.precip, todayActual.tmax) * 100)
         : null;
       const rl      = risk !== null ? riskLevel(risk) : null;
 
@@ -430,7 +440,7 @@
         const todayStr = new Date().toISOString().slice(0, 10);
         const row = cached ? (cached.find(d => d.date === todayStr) || cached[cached.length - 1]) : null;
         const model = getModel(modelId);
-        _riskMap[locId] = row ? Math.round(runModelDay(model.params, row.tmean, row.rh_mean, row.precip) * 100) : null;
+        _riskMap[locId] = row ? Math.round(runModelDay(model.params, row.tmean, row.rh_mean, row.precip, row.tmax) * 100) : null;
         updateSummary();
       }
     }
@@ -448,7 +458,7 @@
         const todayStr = new Date().toISOString().slice(0, 10);
         const row = data ? (data.find(d => d.date === todayStr) || data[data.length - 1]) : null;
         const model = getModel(loc.modelId);
-        _riskMap[loc.id] = row ? Math.round(runModelDay(model.params, row.tmean, row.rh_mean, row.precip) * 100) : null;
+        _riskMap[loc.id] = row ? Math.round(runModelDay(model.params, row.tmean, row.rh_mean, row.precip, row.tmax) * 100) : null;
         updateSummary();
       } catch {
         const el = document.getElementById(`w-${loc.id}`);

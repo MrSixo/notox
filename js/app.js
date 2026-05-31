@@ -32,6 +32,19 @@ const BUILTIN_MODELS = [
   { id: "__coakley1988", name: "Sárgarozsda (stripe rust)",                 params: { topt: 11,   sigma: 5, rh_thr: 80, precip_min: 0,   risk_thr: 30 } },
   { id: "__madden1981",  name: "Levélrozsda (leaf rust) — Madden",          params: { topt: 20,   sigma: 6, rh_thr: 75, precip_min: 0,   risk_thr: 35 } },
   { id: "__pscheidt1993",name: "Lisztharmat (powdery mildew)",              params: { topt: 21,   sigma: 5, rh_thr: 55, precip_min: 0,   risk_thr: 40 } },
+  // AFLA-maize: Aspergillus flavus / AFB1 kukoricán
+  // Forrás: Balková et al. 2026 (AFLA-maize), Molnár et al. 2023 (Debrecen)
+  { id: "__afla_maize",  name: "Aflatoxin AFB1 (AFLA-maize) — Kukorica",  params: {
+    type: "afla_maize",
+    t_opt:    30,   // °C — A. flavus növekedési optimum
+    t_sigma:   6,   // °C — hőmérsékleti görbe szélessége
+    rh_thr:   60,   // % — minimális RH fertőzéshez
+    rh_opt:   80,   // % — optimális RH
+    stress_t: 35,   // °C — hőstressz küszöb (T_max)
+    stress_rh: 50,  // % — szárazsági küszöb RH
+    afi_threshold: 95, // AFI küszöb: >95 → 50% esély EU-limit (5 μg/kg) túllépésére
+    risk_thr: 40,
+  }},
 ];
 
 // Beépített + egyéni modellek (notox-models localStorage)
@@ -41,11 +54,36 @@ function loadModels() {
   return [...BUILTIN_MODELS, ...custom];
 }
 
-// Generic risk calc — supports gaussian and linear_t formula types
-function runModelDay(params, tmean, rh, precip) {
+// Generic risk calc — supports gaussian, linear_t, afla_maize formula types
+// tmax: opcionális 5. paraméter (DWD adatnál elérhető)
+function runModelDay(params, tmean, rh, precip, tmax) {
   if (tmean === null || rh === null) return 0;
 
   const formulaType = params.type || "gaussian";
+
+  // ── AFLA-maize: Aspergillus flavus / AFB1 (Balková 2026, Molnár 2023) ──
+  if (formulaType === "afla_maize") {
+    const tOpt    = params.t_opt    ?? 30;
+    const tSigma  = params.t_sigma  ?? 6;
+    const rhThr   = params.rh_thr   ?? 60;
+    const rhOpt   = params.rh_opt   ?? 80;
+
+    // 1. Hőmérsékleti faktor: Gauss-görbe, csúcs 30°C-on
+    const tFactor = Math.exp(-0.5 * Math.pow((tmean - tOpt) / tSigma, 2));
+
+    // 2. Páratartalmi faktor (60% alatt 0, 80% felett 1)
+    const rhFactor = rh >= rhOpt ? 1
+      : rh >= rhThr  ? (rh - rhThr) / (rhOpt - rhThr)
+      : 0;
+
+    // 3. Hőstressz-szárazsági szorzó (Molnár 2023: T_max≥35°C + RH<50% = legjobb predaktor)
+    //    tmax ha elérhető, különben tmean+5 közelítés
+    const effectiveTmax = tmax ?? (tmean + 5);
+    const heatDrought   = effectiveTmax >= (params.stress_t ?? 35) && rh < (params.stress_rh ?? 50);
+    const stressFactor  = heatDrought ? 1.5 : 1.0;
+
+    return Math.min(1, tFactor * rhFactor * stressFactor);
+  }
 
   if (formulaType === "linear_t") {
     // Lineáris hőfaktor (degree-day alapú)
@@ -72,7 +110,7 @@ function runModelDay(params, tmean, rh, precip) {
 
 function simulateModel(model, weatherSeries) {
   const daily = weatherSeries.map(d => {
-    const raw  = runModelDay(model.params, d.tmean, d.rh_mean, d.precip);
+    const raw  = runModelDay(model.params, d.tmean, d.rh_mean, d.precip, d.tmax);
     const risk = Math.round(raw * 100 * 10) / 10;
     const rl   = riskLevel(risk);
     return { date: d.date, risk, is_forecast: d.is_forecast, ...rl };
