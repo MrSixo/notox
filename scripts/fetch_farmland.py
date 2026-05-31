@@ -63,6 +63,7 @@ def fetch_overpass() -> dict:
             r = requests.post(
                 OVERPASS_URL,
                 data={"data": OVERPASS_QUERY},
+                headers={"User-Agent": "No-tox/1.0 agricultural-disease-forecast (github.com/MrSixo/notox)"},
                 timeout=360,
             )
             r.raise_for_status()
