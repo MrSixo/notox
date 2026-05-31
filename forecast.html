@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>No-tox — Előrejelzés</title>
+  <script src="/js/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body>
+
+  <main class="page-wrap">
+    <div class="page">
+
+      <div class="page-head">
+        <div>
+          <h1>Fuzárium-kockázat előrejelzés</h1>
+          <div class="sub" id="sub-line">
+            Válassz helyszínt és kattints a Futtatásra · Open-Meteo ICON-EU · De Wolf et al. 2003
+          </div>
+        </div>
+        <div class="right">
+          <span id="status-msg" style="font-family:var(--mono);font-size:11px;color:var(--text-dim);padding:0 6px;"></span>
+          <div class="spinner" id="spinner"></div>
+        </div>
+      </div>
+
+      <!-- Config -->
+      <div class="card" style="margin-bottom:14px;">
+        <div class="config-bar">
+          <div class="field">
+            <label>Helyszín</label>
+            <select id="sel-location" style="min-width:200px;">
+              <option value="47.4979,19.0402">Budapest</option>
+              <option value="47.5317,21.6273">Debrecen</option>
+              <option value="46.4167,20.3333">Hódmezővásárhely</option>
+              <option value="47.1860,18.4131">Székesfehérvár</option>
+              <option value="46.0727,18.2323">Pécs</option>
+              <option value="47.6875,17.6504">Győr</option>
+              <option value="46.3667,17.7967">Kaposvár</option>
+              <option value="custom">Egyedi koordináta…</option>
+            </select>
+          </div>
+          <div class="field" id="custom-row" style="display:none;flex-direction:row;gap:8px;align-items:flex-end;">
+            <div class="field">
+              <label>Lat</label>
+              <input id="inp-lat" type="number" step="0.0001" value="47.4979" style="width:100px;" />
+            </div>
+            <div class="field">
+              <label>Lon</label>
+              <input id="inp-lon" type="number" step="0.0001" value="19.0402" style="width:100px;" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Előrejelzés</label>
+            <select id="sel-days">
+              <option value="7">7 nap</option>
+              <option value="10">10 nap</option>
+              <option value="14" selected>14 nap</option>
+            </select>
+          </div>
+          <div style="margin-left:auto;display:flex;align-items:flex-end;">
+            <button class="btn btn-primary" id="btn-run">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3l9 5-9 5V3z"/></svg>
+              Futtatás
+            </button>
+          </div>
+        </div>
+        <!-- Disease / model selector -->
+        <div style="padding:0 16px 14px;border-top:1px solid var(--border);margin-top:0;">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;padding:10px 0 8px;">Betegségek / modellek</div>
+          <div id="disease-checks" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+        </div>
+      </div>
+
+      <!-- KPI -->
+      <div class="stats">
+        <div class="stat">
+          <div class="label"><span class="dot" style="background:var(--red);"></span> Max. kockázat</div>
+          <div><span class="val" id="kpi-max">—</span><span class="unit">/ 100</span></div>
+          <div class="delta" id="kpi-max-lbl" style="color:var(--text-dim);">futtatás szükséges</div>
+        </div>
+        <div class="stat">
+          <div class="label"><span class="dot" style="background:var(--amber);"></span> Átl. kockázat</div>
+          <div><span class="val" id="kpi-avg">—</span><span class="unit">/ 100</span></div>
+          <div class="delta"></div>
+        </div>
+        <div class="stat">
+          <div class="label"><span class="dot" style="background:var(--red);"></span> Kritikus napok</div>
+          <div><span class="val" id="kpi-crit">—</span></div>
+          <div class="delta" id="kpi-crit-lbl"></div>
+        </div>
+        <div class="stat">
+          <div class="label"><span class="dot"></span> Csúcskockázat napja</div>
+          <div style="font-family:var(--mono);font-size:14px;font-weight:600;color:var(--text-br);margin-top:2px;" id="kpi-peak">—</div>
+          <div class="delta"></div>
+        </div>
+      </div>
+
+      <!-- Grafikon + térkép -->
+      <div class="main-grid">
+        <div class="card">
+          <div class="card-h">
+            <h3 id="chart-title">Napi kockázat</h3>
+            <div class="right">
+              <span id="loc-label" style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">Budapest</span>
+            </div>
+          </div>
+          <div class="chart-wrap" style="height:260px;">
+            <div class="chart-placeholder" id="chart-ph">
+              <svg width="36" height="36" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1" opacity=".25"><path d="M2.5 13.5h11M4.5 13.5V8.5M7 13.5V5M9.5 13.5V9M12 13.5V6.5"/></svg>
+              Töltsd ki a beállításokat és kattints a Futtatás gombra
+            </div>
+            <canvas id="risk-canvas" style="display:none;height:100%;"></canvas>
+          </div>
+          <div class="risk-legend">
+            <span style="background:rgba(76,175,125,.12);color:#4caf7d;border-radius:3px 0 0 3px;">Alacsony (0–20)</span>
+            <span style="background:rgba(212,160,23,.12);color:#d4a017;">Közepes (20–50)</span>
+            <span style="background:rgba(220,90,30,.12);color:#dc5a1e;">Magas (50–75)</span>
+            <span style="background:rgba(224,82,82,.12);color:#e05252;border-radius:0 3px 3px 0;">Kritikus (75–100)</span>
+          </div>
+        </div>
+
+        <div class="card" style="overflow:hidden;">
+          <div class="card-h">
+            <h3>Helyszín</h3>
+            <div class="right" style="font-family:var(--mono);font-size:9px;color:var(--text-dim);">kattints a térképre</div>
+          </div>
+          <div id="map"></div>
+        </div>
+      </div>
+
+      <div class="err" id="err-box"></div>
+
+      <!-- Napi táblázat -->
+      <div class="card" id="table-card" style="display:none;margin-top:14px;">
+        <div class="card-h">
+          <h3>Napi bontás</h3>
+          <div class="right"><button class="btn btn-sm" onclick="exportCsv()">CSV export</button></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table">
+            <thead id="tbl-head"><tr><th>Dátum</th><th>Kockázat</th><th>Szint</th></tr></thead>
+            <tbody id="tbl-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+  <script src="/js/config.js"></script>
+  <script src="/js/shell.js"></script>
+  <script src="/js/openmeteo.js"></script>
+  <script src="/js/fusarium.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

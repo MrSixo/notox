@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>No-tox — Validáció</title>
+  <script src="/js/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .val-form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .val-section-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      padding: 10px 0 6px;
+      border-top: 1px solid var(--border);
+      margin-top: 4px;
+      grid-column: 1 / -1;
+    }
+    .val-obs-positive { color: #e05252; }
+    .val-obs-negative { color: #4caf7d; }
+
+    .confusion-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .conf-cell {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      text-align: center;
+    }
+    .conf-cell .conf-val {
+      font-size: 24px;
+      font-weight: 700;
+      font-family: var(--mono);
+    }
+    .conf-cell .conf-lbl {
+      font-size: 10px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+    .conf-tp { border-color: rgba(76,175,125,.4); }
+    .conf-tp .conf-val { color: #4caf7d; }
+    .conf-fp { border-color: rgba(224,82,82,.3); }
+    .conf-fp .conf-val { color: #e05252; }
+    .conf-fn { border-color: rgba(224,82,82,.3); }
+    .conf-fn .conf-val { color: #e05252; }
+    .conf-tn { border-color: rgba(76,175,125,.4); }
+    .conf-tn .conf-val { color: #4caf7d; }
+
+    .metric-row {
+      display: flex; gap: 20px; flex-wrap: wrap;
+      font-family: var(--mono); font-size: 12px;
+      padding: 10px 0; border-top: 1px solid var(--border);
+    }
+    .metric-row .m-item { display: flex; flex-direction: column; gap: 2px; }
+    .metric-row .m-val { font-size: 18px; font-weight: 700; color: var(--text-br); }
+    .metric-row .m-lbl { font-size: 10px; color: var(--text-dim); }
+
+    .obs-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .obs-table th {
+      padding: 8px 10px; border-bottom: 1px solid var(--border);
+      color: var(--text-muted); font-family: var(--mono); font-size: 10px;
+      text-align: left; font-weight: 500; text-transform: uppercase; letter-spacing: .04em;
+    }
+    .obs-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .obs-table tr:last-child td { border-bottom: none; }
+    .obs-table tr:hover td { background: var(--bg-2); }
+
+    .match-icon { font-size: 14px; }
+    .geocode-dropdown {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 300;
+      background: var(--bg-1); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-top: 4px;
+      max-height: 180px; overflow-y: auto;
+      box-shadow: 0 4px 16px rgba(0,0,0,.5);
+    }
+    .gc-item {
+      padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 12px;
+    }
+    .gc-item:last-child { border-bottom: none; }
+    .gc-item:hover { background: var(--bg-2); }
+
+    #val-chart-wrap { height: 220px; position: relative; }
+    .chart-placeholder { display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 100%; color: var(--text-dim); gap: 8px;
+      font-size: 12px; font-family: var(--mono); }
+  </style>
+</head>
+<body>
+
+  <main class="page-wrap">
+    <div class="page">
+
+      <div class="page-head">
+        <div>
+          <h1>Validáció</h1>
+          <div class="sub">Terepi megfigyelések rögzítése · Modell-teljesítmény értékelése · De Wolf 2003 / Shah 2013 módszertan</div>
+        </div>
+        <div class="right">
+          <button class="btn btn-primary" id="btn-add-obs">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
+            Megfigyelés hozzáadása
+          </button>
+        </div>
+      </div>
+
+      <!-- ── Megfigyelés form ───────────────────────────────────────────── -->
+      <div id="obs-form" class="card" style="display:none;margin-bottom:14px;">
+        <div class="card-h">
+          <h3>Új megfigyelés</h3>
+          <div class="right">
+            <button class="btn" id="btn-cancel-obs">Mégse</button>
+            <button class="btn btn-primary" id="btn-save-obs">Mentés</button>
+          </div>
+        </div>
+
+        <div style="padding:0 16px 16px;">
+
+          <!-- Helyszín és dátum -->
+          <div class="val-section-label" style="border-top:none;padding-top:0;">Helyszín és időpont</div>
+          <div class="val-form-grid">
+            <div class="field" style="grid-column:1/-1;position:relative;">
+              <label>Helységnév keresés</label>
+              <div style="display:flex;gap:8px;">
+                <input id="obs-geocode" type="text" placeholder="pl. Debrecen, Szolnok…" style="flex:1;" autocomplete="off" />
+                <button class="btn" id="btn-obs-geocode" style="flex-shrink:0;">
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4"/><path d="M11 11l3 3"/></svg>
+                  Keresés
+                </button>
+              </div>
+              <div id="obs-geocode-results" class="geocode-dropdown" style="display:none;"></div>
+            </div>
+            <div class="field">
+              <label>Lat (szélesség)</label>
+              <input id="obs-lat" type="number" step="0.0001" placeholder="47.53" />
+            </div>
+            <div class="field">
+              <label>Lon (hosszúság)</label>
+              <input id="obs-lon" type="number" step="0.0001" placeholder="21.63" />
+            </div>
+            <div class="field">
+              <label>Helyszín neve</label>
+              <input id="obs-name" type="text" placeholder="pl. Debreceni kísérleti tábla" />
+            </div>
+            <div class="field">
+              <label>Megfigyelés dátuma</label>
+              <input id="obs-date" type="date" />
+            </div>
+          </div>
+
+          <!-- Termesztési adatok -->
+          <div class="val-section-label">Növény és agrotechnika</div>
+          <div class="val-form-grid">
+            <div class="field">
+              <label>Növénykultúra</label>
+              <select id="obs-crop">
+                <option value="wheat">Búza (kalász)</option>
+                <option value="barley">Árpa</option>
+                <option value="maize">Kukorica</option>
+                <option value="rye">Rozs</option>
+                <option value="other">Egyéb gabona</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Fajtarezisztencia</label>
+              <select id="obs-resist">
+                <option value="susceptible">Fogékony</option>
+                <option value="moderate">Közepes</option>
+                <option value="tolerant">Toleráns</option>
+                <option value="resistant">Rezisztens</option>
+                <option value="unknown">Ismeretlen</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Előveteményes</label>
+              <select id="obs-prev-crop">
+                <option value="corn">Kukorica (kockázatnövelő)</option>
+                <option value="wheat">Búza</option>
+                <option value="legume">Pillangós</option>
+                <option value="other">Egyéb</option>
+                <option value="unknown">Ismeretlen</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Talajmüvelés</label>
+              <select id="obs-tillage">
+                <option value="conventional">Hagyományos</option>
+                <option value="minimum">Minimális</option>
+                <option value="notill">Direktvetés (kockázatnövelő)</option>
+                <option value="unknown">Ismeretlen</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Mért értékek -->
+          <div class="val-section-label">Terepi megfigyelés / mintavétel eredménye</div>
+          <div class="val-form-grid">
+            <div class="field">
+              <label>Fuzárium jelenlét</label>
+              <select id="obs-present">
+                <option value="1">Igen — fertőzés azonosítva</option>
+                <option value="0">Nem — negatív minta</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>FHB súlyosság (%)</label>
+              <input id="obs-severity" type="number" min="0" max="100" step="0.1" placeholder="pl. 12.5" />
+            </div>
+            <div class="field">
+              <label>DON koncentráció (ppb)</label>
+              <input id="obs-don" type="number" min="0" step="1" placeholder="pl. 1250" />
+            </div>
+            <div class="field">
+              <label>Vizsgálat típusa</label>
+              <select id="obs-method">
+                <option value="visual">Vizuális becslés</option>
+                <option value="lab">Laboratóriumi (PCR/ELISA)</option>
+                <option value="strip">Gyorsteszt (strip)</option>
+                <option value="other">Egyéb</option>
+              </select>
+            </div>
+            <div class="field" style="grid-column:1/-1;">
+              <label>Megjegyzés</label>
+              <input id="obs-note" type="text" placeholder="Opcionális megjegyzés…" />
+            </div>
+          </div>
+
+          <div id="obs-form-err" style="display:none;color:var(--red);font-size:12px;margin-top:8px;font-family:var(--mono);"></div>
+        </div>
+      </div>
+
+      <!-- ── Modell-teljesítmény ────────────────────────────────────────── -->
+      <div class="main-grid" style="margin-bottom:14px;">
+
+        <div class="card">
+          <div class="card-h">
+            <h3>Modell teljesítmény</h3>
+            <div class="right">
+              <select id="val-model-sel" style="font-size:11px;min-width:160px;"></select>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-left:8px;">küszöb:</span>
+              <select id="val-threshold" style="font-size:11px;width:64px;">
+                <option value="30">30</option>
+                <option value="40">40</option>
+                <option value="50" selected>50</option>
+                <option value="60">60</option>
+              </select>
+            </div>
+          </div>
+          <div style="padding:0 16px 16px;">
+            <div id="perf-empty" style="color:var(--text-dim);font-size:12px;padding:16px 0;">
+              Még nincs elég megfigyelés az értékeléshez. Adj hozzá legalább 2 terepi adatot.
+            </div>
+            <div id="perf-content" style="display:none;">
+              <div class="confusion-grid">
+                <div class="conf-cell conf-tp">
+                  <div class="conf-val" id="cm-tp">—</div>
+                  <div class="conf-lbl">Igaz pozitív (TP)</div>
+                </div>
+                <div class="conf-cell conf-fp">
+                  <div class="conf-val" id="cm-fp">—</div>
+                  <div class="conf-lbl">Hamis pozitív (FP)</div>
+                </div>
+                <div class="conf-cell conf-fn">
+                  <div class="conf-val" id="cm-fn">—</div>
+                  <div class="conf-lbl">Hamis negatív (FN)</div>
+                </div>
+                <div class="conf-cell conf-tn">
+                  <div class="conf-val" id="cm-tn">—</div>
+                  <div class="conf-lbl">Igaz negatív (TN)</div>
+                </div>
+              </div>
+              <div class="metric-row">
+                <div class="m-item"><span class="m-val" id="m-acc">—</span><span class="m-lbl">Pontosság</span></div>
+                <div class="m-item"><span class="m-val" id="m-sens">—</span><span class="m-lbl">Szenzitivitás</span></div>
+                <div class="m-item"><span class="m-val" id="m-spec">—</span><span class="m-lbl">Specificitás</span></div>
+                <div class="m-item"><span class="m-val" id="m-n">—</span><span class="m-lbl">Megfigyelések</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <h3>Modell kalibrálás</h3>
+            <div class="right" style="font-family:var(--mono);font-size:9px;color:var(--text-dim);">előrejelzett vs. megfigyelt</div>
+          </div>
+          <div id="val-chart-wrap">
+            <div class="chart-placeholder" id="val-chart-ph">
+              <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" opacity=".25"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+              Adj hozzá megfigyeléseket a diagram megjelenítéséhez
+            </div>
+            <canvas id="val-canvas" style="display:none;"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Megfigyelések táblázat ────────────────────────────────────── -->
+      <div class="card">
+        <div class="card-h">
+          <h3>Rögzített megfigyelések</h3>
+          <div class="right">
+            <button class="btn btn-sm" id="btn-export-obs">CSV export</button>
+            <button class="btn btn-sm" id="btn-clear-obs" style="color:var(--red-line,#c0392b);border-color:var(--red-line,#c0392b);">Összes törlése</button>
+          </div>
+        </div>
+        <div id="obs-empty" style="padding:32px;text-align:center;color:var(--text-dim);">
+          <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" opacity=".3" style="margin-bottom:8px;"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M5 8h6M5 5h6M5 11h3"/></svg>
+          <div style="font-size:13px;margin-bottom:4px;">Még nincs rögzített megfigyelés</div>
+          <div style="font-size:11px;">Kattints a „Megfigyelés hozzáadása" gombra az első adat beírásához.</div>
+        </div>
+        <div id="obs-table-wrap" style="display:none;overflow-x:auto;">
+          <table class="obs-table">
+            <thead>
+              <tr>
+                <th>Dátum</th>
+                <th>Helyszín</th>
+                <th>Kultúra</th>
+                <th>Megfigyelt</th>
+                <th>FHB %</th>
+                <th>DON (ppb)</th>
+                <th>Modell kockázat</th>
+                <th>Egyezés</th>
+                <th>ERA5</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="obs-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ── ERA5 Visszatekintő modal ──────────────────────────────────────── -->
+  <div id="retro-modal" style="display:none;position:fixed;inset:0;z-index:2000;
+    background:rgba(0,0,0,.65);backdrop-filter:blur(4px);padding:16px;overflow-y:auto;">
+    <div style="max-width:860px;margin:32px auto;background:var(--bg-1);
+      border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;">
+
+      <!-- Fejléc -->
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border);
+        display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+        <div>
+          <div style="font-weight:700;color:var(--text-br);font-size:14px;" id="retro-title">—</div>
+          <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;" id="retro-sub"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+          <div id="retro-spinner" class="spinner" style="display:none;"></div>
+          <button class="btn" onclick="closeRetro()">✕ Bezárás</button>
+        </div>
+      </div>
+
+      <!-- Tartalom -->
+      <div style="padding:16px 20px;">
+
+        <!-- Megfigyelés összefoglaló -->
+        <div id="retro-obs-summary" style="display:flex;gap:16px;flex-wrap:wrap;
+          background:var(--bg-2);border:1px solid var(--border);border-radius:var(--radius);
+          padding:10px 14px;margin-bottom:16px;font-family:var(--mono);font-size:11px;"></div>
+
+        <!-- Grafikon -->
+        <div style="height:240px;position:relative;margin-bottom:16px;">
+          <canvas id="retro-canvas"></canvas>
+        </div>
+
+        <!-- Napi adattábla -->
+        <div style="overflow-x:auto;">
+          <table class="obs-table" style="font-size:11px;">
+            <thead>
+              <tr>
+                <th>Dátum</th>
+                <th>Tmax (°C)</th>
+                <th>Tmin (°C)</th>
+                <th>Párat. (%)</th>
+                <th>Csapadék (mm)</th>
+                <th>Fuzárium kockázat</th>
+              </tr>
+            </thead>
+            <tbody id="retro-tbody"></tbody>
+          </table>
+        </div>
+
+        <div style="margin-top:12px;font-size:10px;color:var(--text-dim);font-family:var(--mono);">
+          Forrás: Open-Meteo archive API (ERA5 reanalysis) · ±7 napos ablak a megfigyelés napja körül
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+  <script src="/js/config.js"></script>
+  <script src="/js/shell.js"></script>
+  <script src="/js/openmeteo.js"></script>
+  <script src="/js/fusarium.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    // ── Storage ───────────────────────────────────────────────────────────
+    const OBS_KEY = "notox-validation";
+
+    function loadObs()  { try { return JSON.parse(localStorage.getItem(OBS_KEY) || "[]"); } catch { return []; } }
+    function saveObs(a) { localStorage.setItem(OBS_KEY, JSON.stringify(a)); }
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    const CROP_LABELS    = { wheat:"Búza",   barley:"Árpa",    maize:"Kukorica", rye:"Rozs", other:"Egyéb" };
+    const RESIST_LABELS  = { susceptible:"Fogékony", moderate:"Közepes", tolerant:"Toleráns", resistant:"Rezisztens", unknown:"—" };
+    const TILLAGE_LABELS = { conventional:"Hagyományos", minimum:"Minimális", notill:"Direktvetés", unknown:"—" };
+    const METHOD_LABELS  = { visual:"Vizuális", lab:"Labor", strip:"Gyorsteszt", other:"Egyéb" };
+
+    // ── Historical weather (Open-Meteo archive API) ───────────────────────
+    async function fetchHistoricalWeather(lat, lon, dateStr) {
+      // Fetch a 14-day window centred on the given date (7 before, 7 after / up to today)
+      const target = new Date(dateStr);
+      const start  = new Date(target); start.setDate(start.getDate() - 7);
+      const end    = new Date(target); end.setDate(end.getDate() + 7);
+      const today  = new Date();
+      if (end > today) end.setTime(today.getTime());
+
+      const fmt = d => d.toISOString().slice(0, 10);
+      const params = new URLSearchParams({
+        latitude: lat, longitude: lon,
+        start_date: fmt(start), end_date: fmt(end),
+        daily: ["temperature_2m_max","temperature_2m_min","precipitation_sum",
+                "relative_humidity_2m_max","relative_humidity_2m_min"].join(","),
+        timezone: "Europe/Budapest",
+      });
+
+      const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?${params}`);
+      if (!res.ok) throw new Error(`Open-Meteo archívum hiba: ${res.status}`);
+      const json = await res.json();
+      const d = json.daily;
+      return d.time.map((date, i) => ({
+        date,
+        tmax: d.temperature_2m_max[i],
+        tmin: d.temperature_2m_min[i],
+        tmean: (d.temperature_2m_max[i] + d.temperature_2m_min[i]) / 2,
+        rh_mean: (d.relative_humidity_2m_max[i] + d.relative_humidity_2m_min[i]) / 2,
+        precip: d.precipitation_sum[i] ?? 0,
+      }));
+    }
+
+    // ── Model registry (same as app.js) ──────────────────────────────────
+    function buildModelSelector() {
+      const models = loadModels();
+      const sel = document.getElementById("val-model-sel");
+      sel.innerHTML = models.map(m => `<option value="${m.id}">${m.name}</option>`).join("");
+      sel.addEventListener("change", renderPerformance);
+    }
+
+    function selectedValModel() {
+      const id = document.getElementById("val-model-sel").value;
+      return loadModels().find(m => m.id === id);
+    }
+
+    // ── Compute model risk for one observation ────────────────────────────
+    async function computeRiskForObs(obs) {
+      if (obs._cached_risks) return obs._cached_risks;
+      try {
+        const weather = await fetchHistoricalWeather(obs.lat, obs.lon, obs.date);
+        const models  = loadModels();
+        const risks   = {};
+        models.forEach(m => {
+          const dailyRisks = weather.map(d => runModelDay(m.params, d.tmean, d.rh_mean, d.precip) * 100);
+          risks[m.id] = Math.round(Math.max(...dailyRisks) * 10) / 10;
+        });
+        obs._cached_risks = risks;
+        // Napi időjárás + kockázat sorozat tárolása visszatekintőhöz
+        obs._cached_weather = weather.map(d => ({
+          date:    d.date,
+          tmax:    d.tmax,
+          tmin:    d.tmin,
+          tmean:   d.tmean,
+          rh_mean: d.rh_mean,
+          precip:  d.precip,
+          risks:   Object.fromEntries(models.map(m => [
+            m.id,
+            Math.round(runModelDay(m.params, d.tmean, d.rh_mean, d.precip) * 1000) / 10,
+          ])),
+        }));
+        const all = loadObs();
+        const idx = all.findIndex(o => o.id === obs.id);
+        if (idx !== -1) {
+          all[idx]._cached_risks   = risks;
+          all[idx]._cached_weather = obs._cached_weather;
+          saveObs(all);
+        }
+        return risks;
+      } catch {
+        return {};
+      }
+    }
+
+    // ── Geocoder ──────────────────────────────────────────────────────────
+    async function geocodeSearch(q) {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=hu&limit=5`;
+      const res = await fetch(url, { headers: { "Accept-Language": "hu" } });
+      return res.json();
+    }
+
+    function wireGeocoder(inputId, btnId, resultsId, nameId, latId, lonId) {
+      const btn = document.getElementById(btnId);
+      const inp = document.getElementById(inputId);
+      const res = document.getElementById(resultsId);
+
+      btn.addEventListener("click", async () => {
+        const q = inp.value.trim(); if (!q) return;
+        res.innerHTML = `<div class="gc-item" style="color:var(--text-dim);">Keresés…</div>`;
+        res.style.display = "";
+        try {
+          const hits = await geocodeSearch(q);
+          if (!hits.length) { res.innerHTML = `<div class="gc-item" style="color:var(--text-dim);">Nincs találat</div>`; return; }
+          res.innerHTML = hits.map((h, i) => `
+            <div class="gc-item" data-i="${i}">
+              <div style="color:var(--text-br);font-weight:500;">${h.display_name.split(",")[0]}</div>
+              <div style="color:var(--text-dim);font-size:10px;font-family:var(--mono);">${parseFloat(h.lat).toFixed(4)}°N ${parseFloat(h.lon).toFixed(4)}°E</div>
+            </div>`).join("");
+          res.querySelectorAll(".gc-item[data-i]").forEach((el, i) => {
+            el.addEventListener("click", () => {
+              const h = hits[i];
+              if (nameId) document.getElementById(nameId).value = h.display_name.split(",")[0];
+              document.getElementById(latId).value = parseFloat(h.lat).toFixed(4);
+              document.getElementById(lonId).value = parseFloat(h.lon).toFixed(4);
+              res.style.display = "none"; inp.value = "";
+            });
+          });
+        } catch {
+          res.innerHTML = `<div class="gc-item" style="color:var(--text-dim);">Hiba a keresés során</div>`;
+        }
+      });
+      inp.addEventListener("keydown", e => { if (e.key === "Enter") btn.click(); });
+    }
+
+    // ── Form handlers ─────────────────────────────────────────────────────
+    document.getElementById("btn-add-obs").addEventListener("click", () => {
+      document.getElementById("obs-form").style.display = "";
+      document.getElementById("obs-form-err").style.display = "none";
+      document.getElementById("obs-date").value = new Date().toISOString().slice(0, 10);
+      ["obs-geocode","obs-lat","obs-lon","obs-name","obs-severity","obs-don","obs-note"].forEach(id => {
+        document.getElementById(id).value = "";
+      });
+      document.getElementById("obs-geocode-results").style.display = "none";
+    });
+
+    document.getElementById("btn-cancel-obs").addEventListener("click", () => {
+      document.getElementById("obs-form").style.display = "none";
+    });
+
+    document.getElementById("btn-save-obs").addEventListener("click", async () => {
+      const lat     = parseFloat(document.getElementById("obs-lat").value);
+      const lon     = parseFloat(document.getElementById("obs-lon").value);
+      const date    = document.getElementById("obs-date").value;
+      const name    = document.getElementById("obs-name").value.trim();
+      const errEl   = document.getElementById("obs-form-err");
+
+      if (isNaN(lat) || isNaN(lon)) { errEl.textContent = "Érvényes koordinátákat adj meg!"; errEl.style.display = ""; return; }
+      if (!date)                     { errEl.textContent = "Dátum megadása kötelező!";        errEl.style.display = ""; return; }
+      errEl.style.display = "none";
+
+      const btn = document.getElementById("btn-save-obs");
+      btn.disabled = true; btn.textContent = "Betöltés…";
+
+      const obs = {
+        id:       Date.now().toString(),
+        lat, lon, date,
+        name:     name || `${lat.toFixed(3)}, ${lon.toFixed(3)}`,
+        crop:     document.getElementById("obs-crop").value,
+        resist:   document.getElementById("obs-resist").value,
+        prevCrop: document.getElementById("obs-prev-crop").value,
+        tillage:  document.getElementById("obs-tillage").value,
+        present:  parseInt(document.getElementById("obs-present").value),
+        severity: parseFloat(document.getElementById("obs-severity").value) || null,
+        don:      parseFloat(document.getElementById("obs-don").value) || null,
+        method:   document.getElementById("obs-method").value,
+        note:     document.getElementById("obs-note").value.trim(),
+      };
+
+      // Fetch historical weather & cache risk scores
+      await computeRiskForObs(obs);
+
+      const all = loadObs();
+      all.push(obs);
+      saveObs(all);
+
+      btn.disabled = false;
+      btn.textContent = "Mentés";
+      document.getElementById("obs-form").style.display = "none";
+      renderAll();
+    });
+
+    // ── Delete / clear ────────────────────────────────────────────────────
+    window.deleteObs = function(id) {
+      saveObs(loadObs().filter(o => o.id !== id));
+      renderAll();
+    };
+
+    document.getElementById("btn-clear-obs").addEventListener("click", () => {
+      if (!confirm("Biztosan törölsz minden megfigyelést?")) return;
+      saveObs([]);
+      renderAll();
+    });
+
+    // ── Performance calculation ───────────────────────────────────────────
+    function renderPerformance() {
+      const model     = selectedValModel();
+      const threshold = parseInt(document.getElementById("val-threshold").value);
+      const obs       = loadObs().filter(o => o._cached_risks && model && o._cached_risks[model.id] !== undefined);
+
+      const perfEl  = document.getElementById("perf-content");
+      const emptyEl = document.getElementById("perf-empty");
+
+      if (!model || obs.length < 2) {
+        perfEl.style.display = "none"; emptyEl.style.display = "";
+        return;
+      }
+      perfEl.style.display = ""; emptyEl.style.display = "none";
+
+      let tp = 0, fp = 0, tn = 0, fn = 0;
+      obs.forEach(o => {
+        const predicted = o._cached_risks[model.id] >= threshold ? 1 : 0;
+        const actual    = o.present;
+        if (predicted === 1 && actual === 1) tp++;
+        else if (predicted === 1 && actual === 0) fp++;
+        else if (predicted === 0 && actual === 0) tn++;
+        else fn++;
+      });
+
+      const n    = obs.length;
+      const acc  = n ? ((tp + tn) / n * 100).toFixed(1) + "%" : "—";
+      const sens = (tp + fn) ? (tp / (tp + fn) * 100).toFixed(1) + "%" : "—";
+      const spec = (tn + fp) ? (tn / (tn + fp) * 100).toFixed(1) + "%" : "—";
+
+      document.getElementById("cm-tp").textContent = tp;
+      document.getElementById("cm-fp").textContent = fp;
+      document.getElementById("cm-fn").textContent = fn;
+      document.getElementById("cm-tn").textContent = tn;
+      document.getElementById("m-acc").textContent  = acc;
+      document.getElementById("m-sens").textContent = sens;
+      document.getElementById("m-spec").textContent = spec;
+      document.getElementById("m-n").textContent    = n;
+    }
+
+    // ── Scatter chart ─────────────────────────────────────────────────────
+    let valChart = null;
+    function renderScatter() {
+      const model = selectedValModel();
+      const obs   = loadObs().filter(o => o._cached_risks && model && o._cached_risks[model.id] !== undefined);
+
+      const ph     = document.getElementById("val-chart-ph");
+      const canvas = document.getElementById("val-canvas");
+
+      if (!model || !obs.length) {
+        ph.style.display = "flex"; canvas.style.display = "none";
+        if (valChart) { valChart.destroy(); valChart = null; }
+        return;
+      }
+      ph.style.display = "none"; canvas.style.display = "block";
+
+      const positive = obs.filter(o => o.present === 1).map(o => ({
+        x: o._cached_risks[model.id],
+        y: o.severity !== null ? o.severity : 100,
+        label: o.name,
+      }));
+      const negative = obs.filter(o => o.present === 0).map(o => ({
+        x: o._cached_risks[model.id],
+        y: o.severity !== null ? o.severity : 0,
+        label: o.name,
+      }));
+
+      if (valChart) valChart.destroy();
+      valChart = new Chart(canvas, {
+        type: "scatter",
+        data: {
+          datasets: [
+            {
+              label: "Fertőzött",
+              data: positive,
+              backgroundColor: "#e0525288",
+              borderColor: "#e05252",
+              pointRadius: 6,
+              pointHoverRadius: 8,
+            },
+            {
+              label: "Negatív",
+              data: negative,
+              backgroundColor: "#4caf7d88",
+              borderColor: "#4caf7d",
+              pointRadius: 6,
+              pointHoverRadius: 8,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: "#7a9175", font: { family: "IBM Plex Mono", size: 10 }, boxWidth: 10 } },
+            tooltip: {
+              callbacks: {
+                label: ctx => ` ${ctx.raw.label}: kockázat ${ctx.raw.x} | FHB ${ctx.raw.y}%`,
+              },
+            },
+          },
+          scales: {
+            x: {
+              min: 0, max: 100,
+              title: { display: true, text: "Modell kockázat (0–100)", color: "#4a5e48", font: { size: 10 } },
+              ticks: { color: "#4a5e48", font: { family: "IBM Plex Mono", size: 10 } },
+              grid:  { color: "rgba(255,255,255,.04)" },
+            },
+            y: {
+              min: 0, max: 100,
+              title: { display: true, text: "FHB súlyosság (%)", color: "#4a5e48", font: { size: 10 } },
+              ticks: { color: "#4a5e48", font: { family: "IBM Plex Mono", size: 10 } },
+              grid:  { color: "rgba(255,255,255,.04)" },
+            },
+          },
+        },
+      });
+    }
+
+    // ── Table ─────────────────────────────────────────────────────────────
+    function renderTable() {
+      const obs    = loadObs();
+      const model  = selectedValModel();
+      const thresh = parseInt(document.getElementById("val-threshold").value);
+      const empty  = document.getElementById("obs-empty");
+      const wrap   = document.getElementById("obs-table-wrap");
+
+      if (!obs.length) { empty.style.display = ""; wrap.style.display = "none"; return; }
+      empty.style.display = "none"; wrap.style.display = "";
+
+      document.getElementById("obs-tbody").innerHTML = obs.map(o => {
+        const risk    = (model && o._cached_risks) ? (o._cached_risks[model.id] ?? "—") : "—";
+        const riskNum = typeof risk === "number" ? risk : null;
+        const predicted = riskNum !== null ? (riskNum >= thresh ? 1 : 0) : null;
+        const match = predicted !== null
+          ? (predicted === o.present
+              ? `<span class="match-icon val-obs-positive">✓</span>`
+              : `<span class="match-icon val-obs-negative">✗</span>`)
+          : "—";
+
+        return `<tr>
+          <td style="font-family:var(--mono);font-size:11px;color:var(--text-muted);">${o.date}</td>
+          <td style="font-weight:500;color:var(--text-br);">${o.name}</td>
+          <td style="font-size:11px;">${CROP_LABELS[o.crop] || o.crop}</td>
+          <td><span style="font-weight:600;" class="${o.present ? "val-obs-positive" : "val-obs-negative"}">
+            ${o.present ? "✓ Igen" : "✗ Nem"}
+          </span></td>
+          <td style="font-family:var(--mono);font-size:11px;">${o.severity !== null ? o.severity + "%" : "—"}</td>
+          <td style="font-family:var(--mono);font-size:11px;">${o.don !== null ? o.don : "—"}</td>
+          <td>
+            ${riskNum !== null
+              ? `<div class="risk-bar-wrap">
+                  <span style="font-family:var(--mono);font-size:11px;color:${riskNum >= thresh ? "#e05252" : "#4caf7d"};">${riskNum}</span>
+                  <div class="risk-bar" style="max-width:60px;"><div class="risk-bar-fill" style="width:${riskNum}%;background:${riskNum >= thresh ? "#e05252" : "#4caf7d"};"></div></div>
+                </div>`
+              : `<span style="color:var(--text-dim);font-size:11px;font-family:var(--mono);">betöltés…</span>`}
+          </td>
+          <td style="text-align:center;font-size:16px;">${match}</td>
+          <td>
+            <button class="btn btn-sm" onclick="openRetro('${o.id}')" title="ERA5 visszatekintés"
+              style="padding:2px 7px;font-size:10px;font-family:var(--mono);">
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:2px;"><path d="M13.5 2.5A6.5 6.5 0 1 1 7 1.5M13.5 2.5V6M13.5 2.5H10"/><path d="M8 5v3l2 2"/></svg>
+              Visszatekintés
+            </button>
+          </td>
+          <td><button class="btn btn-sm" onclick="deleteObs('${o.id}')"
+            style="color:var(--red-line,#c0392b);border-color:var(--red-line,#c0392b);padding:1px 6px;font-size:10px;">✕</button></td>
+        </tr>`;
+      }).join("");
+    }
+
+    // ── CSV export ────────────────────────────────────────────────────────
+    document.getElementById("btn-export-obs").addEventListener("click", () => {
+      const model = selectedValModel();
+      const obs   = loadObs();
+      const head  = ["id","date","name","lat","lon","crop","resist","prevCrop","tillage",
+                     "present","severity","don","method","note","modelRisk","modelId"];
+      const rows  = obs.map(o => {
+        const risk = (model && o._cached_risks) ? (o._cached_risks[model.id] ?? "") : "";
+        return [o.id, o.date, o.name, o.lat, o.lon, o.crop, o.resist, o.prevCrop, o.tillage,
+                o.present, o.severity ?? "", o.don ?? "", o.method, o.note, risk, model?.id ?? ""];
+      });
+      const csv  = [head, ...rows].map(r => r.join(",")).join("\n");
+      const a    = document.createElement("a");
+      a.href     = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
+      a.download = `notox-validation-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+    });
+
+    // ── ERA5 Visszatekintő modal ──────────────────────────────────────────
+    let retroChart = null;
+
+    window.openRetro = async function(id) {
+      const allObs = loadObs();
+      const obs = allObs.find(o => o.id === id);
+      if (!obs) return;
+      const model = selectedValModel();
+      if (!model) { alert("Válassz modellt a legördülőből!"); return; }
+
+      // Fejléc
+      document.getElementById("retro-title").textContent =
+        `ERA5 visszatekintés — ${obs.name}`;
+      document.getElementById("retro-sub").textContent =
+        `${obs.date} · ${obs.lat.toFixed(4)}°N ${obs.lon.toFixed(4)}°E · ${model.name}`;
+
+      // Megfigyelés summary
+      const RESIST_L = { susceptible:"Fogékony", moderate:"Közepes", tolerant:"Toleráns", resistant:"Rezisztens", unknown:"—" };
+      const TILLAGE_L = { conventional:"Hagyományos", minimum:"Minimális", notill:"Direktvetés", unknown:"—" };
+      document.getElementById("retro-obs-summary").innerHTML = [
+        `<span style="color:var(--text-dim);">Kultúra:</span> <b>${CROP_LABELS[obs.crop]||obs.crop}</b>`,
+        `<span style="color:var(--text-dim);">Megfigyelés:</span> <b style="color:${obs.present?"#e05252":"#4caf7d"}">${obs.present ? "✓ Fertőzés" : "✗ Negatív"}</b>`,
+        obs.severity != null ? `<span style="color:var(--text-dim);">FHB:</span> <b>${obs.severity}%</b>` : "",
+        obs.don      != null ? `<span style="color:var(--text-dim);">DON:</span> <b>${obs.don} ppb</b>` : "",
+        `<span style="color:var(--text-dim);">Rezisztencia:</span> ${RESIST_L[obs.resist]||obs.resist}`,
+        `<span style="color:var(--text-dim);">Talajmüvelés:</span> ${TILLAGE_L[obs.tillage]||obs.tillage}`,
+      ].filter(Boolean).join(" &nbsp;·&nbsp; ");
+
+      document.getElementById("retro-modal").style.display = "";
+
+      // Ha nincs cache → lekér
+      let weather = obs._cached_weather;
+      if (!weather) {
+        document.getElementById("retro-spinner").style.display = "block";
+        document.getElementById("retro-tbody").innerHTML =
+          `<tr><td colspan="6" style="text-align:center;color:var(--text-dim);padding:16px;">ERA5 adatok letöltése…</td></tr>`;
+        try {
+          await computeRiskForObs(obs);
+          const fresh = loadObs().find(o => o.id === id);
+          weather = fresh?._cached_weather;
+        } catch {}
+        document.getElementById("retro-spinner").style.display = "none";
+      }
+
+      if (!weather) {
+        document.getElementById("retro-tbody").innerHTML =
+          `<tr><td colspan="6" style="text-align:center;color:#e05252;padding:16px;">Nem sikerült betölteni az ERA5 adatokat.</td></tr>`;
+        return;
+      }
+
+      // Grafikon
+      const labels  = weather.map(d => d.date);
+      const risks   = weather.map(d => d.risks?.[model.id] ?? null);
+      const obsIdx  = weather.findIndex(d => d.date === obs.date);
+      const obsColor = obs.present ? "#e05252" : "#4caf7d";
+
+      if (retroChart) { retroChart.destroy(); retroChart = null; }
+      const ctx = document.getElementById("retro-canvas").getContext("2d");
+      retroChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{
+            label: `${model.name} — napi kockázat`,
+            data: risks,
+            borderColor: "#4caf7d",
+            backgroundColor: "rgba(76,175,125,.08)",
+            tension: 0.35,
+            fill: true,
+            pointRadius: labels.map((_, i) => i === obsIdx ? 8 : 3),
+            pointBackgroundColor: labels.map((_, i) => i === obsIdx ? obsColor : "#4caf7d"),
+            pointBorderColor:     labels.map((_, i) => i === obsIdx ? obsColor : "#4caf7d"),
+            pointBorderWidth: 2,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { labels: { color: "#7a9175", font: { family: "IBM Plex Mono", size: 10 }, boxWidth: 10 } },
+            tooltip: {
+              callbacks: { label: ctx => ` Kockázat: ${ctx.raw ?? "—"}` },
+            },
+            annotation: {
+              annotations: {
+                obsLine: {
+                  type: "line",
+                  xMin: obs.date, xMax: obs.date,
+                  borderColor: obsColor,
+                  borderWidth: 2,
+                  borderDash: [5, 4],
+                  label: {
+                    display: true,
+                    content: obs.present ? "↑ Fertőzés" : "↑ Negatív",
+                    position: "start",
+                    color: obsColor,
+                    font: { family: "IBM Plex Mono", size: 9 },
+                    backgroundColor: "transparent",
+                    yAdjust: -6,
+                  },
+                },
+                thresh50: {
+                  type: "line",
+                  yMin: 50, yMax: 50,
+                  borderColor: "rgba(224,82,82,.25)",
+                  borderWidth: 1,
+                  borderDash: [3, 4],
+                  label: {
+                    display: true, content: "küszöb 50",
+                    position: "end", color: "rgba(224,82,82,.5)",
+                    font: { family: "IBM Plex Mono", size: 8 },
+                    backgroundColor: "transparent",
+                  },
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { color: "#4a5e48", font: { family: "IBM Plex Mono", size: 9 }, maxRotation: 45 },
+              grid:  { color: "rgba(255,255,255,.04)" },
+            },
+            y: {
+              min: 0, max: 100,
+              title: { display: true, text: "Kockázat (0–100)", color: "#4a5e48", font: { size: 10 } },
+              ticks: { color: "#4a5e48", font: { family: "IBM Plex Mono", size: 10 } },
+              grid:  { color: "rgba(255,255,255,.05)" },
+            },
+          },
+        },
+      });
+
+      // Napi adattábla
+      document.getElementById("retro-tbody").innerHTML = weather.map(d => {
+        const risk    = d.risks?.[model.id] ?? null;
+        const isObs   = d.date === obs.date;
+        const rCol    = risk !== null
+          ? (risk >= 50 ? "#e05252" : risk >= 20 ? "#d4a017" : "#4caf7d")
+          : "var(--text-dim)";
+        return `<tr style="${isObs ? "background:var(--bg-3);" : ""}">
+          <td style="font-family:var(--mono);color:${isObs ? "var(--text-br)" : "var(--text-muted)"};font-weight:${isObs?700:400};">
+            ${d.date}${isObs ? `&nbsp;<span style="color:${obsColor};font-size:9px;">← megfigyelés</span>` : ""}
+          </td>
+          <td style="font-family:var(--mono);">${d.tmax != null ? d.tmax.toFixed(1) : "—"}</td>
+          <td style="font-family:var(--mono);">${d.tmin != null ? d.tmin.toFixed(1) : "—"}</td>
+          <td style="font-family:var(--mono);">${d.rh_mean != null ? Math.round(d.rh_mean) : "—"}</td>
+          <td style="font-family:var(--mono);">${d.precip != null ? d.precip.toFixed(1) : "—"}</td>
+          <td style="font-family:var(--mono);color:${rCol};font-weight:${isObs?700:400};">
+            ${risk != null ? risk : "—"}
+            ${isObs && risk != null
+              ? `<span style="font-size:9px;color:var(--text-dim);margin-left:4px;">${risk >= 50 ? "▲ magas" : risk >= 20 ? "~ közepes" : "▼ alacsony"}</span>`
+              : ""}
+          </td>
+        </tr>`;
+      }).join("");
+    };
+
+    window.closeRetro = function() {
+      document.getElementById("retro-modal").style.display = "none";
+      if (retroChart) { retroChart.destroy(); retroChart = null; }
+    };
+
+    // Kattintás a modal háttérre → bezár
+    document.getElementById("retro-modal").addEventListener("click", e => {
+      if (e.target === document.getElementById("retro-modal")) closeRetro();
+    });
+
+    // ── Re-render all ─────────────────────────────────────────────────────
+    function renderAll() {
+      renderTable();
+      renderPerformance();
+      renderScatter();
+    }
+
+    document.getElementById("val-model-sel").addEventListener("change", renderAll);
+    document.getElementById("val-threshold").addEventListener("change", renderAll);
+
+    // ── Init ──────────────────────────────────────────────────────────────
+    document.addEventListener("DOMContentLoaded", () => {
+      wireGeocoder("obs-geocode","btn-obs-geocode","obs-geocode-results","obs-name","obs-lat","obs-lon");
+      document.addEventListener("click", e => {
+        if (!e.target.closest("#obs-form"))
+          document.getElementById("obs-geocode-results").style.display = "none";
+      });
+      buildModelSelector();
+      renderAll();
+    });
+  </script>
+</body>
+</html>

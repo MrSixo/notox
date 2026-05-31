@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>No-tox — Forráselemzés</title>
+  <script src="/js/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    /* ── API kulcs panel ─────────────────────────────────────────── */
+    .api-panel {
+      background: var(--bg-1); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); margin-bottom: 16px; overflow: hidden;
+    }
+    .api-panel-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; cursor: pointer; user-select: none;
+    }
+    .api-panel-head:hover { background: var(--bg-2); }
+    .api-panel-title {
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: .06em;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .api-status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--text-dim);
+    }
+    .api-status-dot.ok { background: var(--green); }
+    .api-panel-body { padding: 14px; border-top: 1px solid var(--border); display: none; }
+    .api-panel.open .api-panel-body { display: block; }
+    .api-note {
+      font-size: 11px; color: var(--text-dim); margin-bottom: 10px; line-height: 1.6;
+    }
+    .api-row { display: flex; gap: 8px; }
+
+    /* ── Upload zone ─────────────────────────────────────────────── */
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: var(--radius-lg);
+      padding: 40px 24px; text-align: center; cursor: pointer;
+      transition: border-color .15s, background .15s;
+      background: var(--bg-1);
+      position: relative;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--green); background: var(--green-soft);
+    }
+    .upload-zone input[type=file] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    }
+    .upload-icon { margin-bottom: 12px; color: var(--text-dim); }
+    .upload-label { font-size: 13px; color: var(--text); font-weight: 600; margin-bottom: 4px; }
+    .upload-sub { font-size: 11px; color: var(--text-dim); }
+    .upload-filename {
+      display: none; margin-top: 10px;
+      font-family: var(--mono); font-size: 11px; color: var(--green);
+    }
+
+    .or-divider {
+      display: flex; align-items: center; gap: 12px;
+      margin: 14px 0; color: var(--text-dim); font-size: 11px;
+    }
+    .or-divider::before, .or-divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    .paste-area {
+      width: 100%; min-height: 120px; resize: vertical;
+      background: var(--bg-1); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      font-family: var(--mono); font-size: 11px; line-height: 1.6;
+      padding: 10px 12px; box-sizing: border-box; outline: none;
+    }
+    .paste-area:focus { border-color: var(--green); }
+
+    /* ── Progress bar ────────────────────────────────────────────── */
+    .progress-wrap { display: none; margin-top: 16px; }
+    .progress-label {
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+      margin-bottom: 6px; display: flex; justify-content: space-between;
+    }
+    .progress-bar {
+      height: 4px; background: var(--bg-3); border-radius: 2px; overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%; background: var(--green); border-radius: 2px;
+      transition: width .3s; width: 0%;
+    }
+
+    /* ── Results ─────────────────────────────────────────────────── */
+    .results-section { display: none; margin-top: 24px; }
+    .result-card {
+      background: var(--bg-1); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); margin-bottom: 12px; overflow: hidden;
+    }
+    .result-card-head {
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: .06em;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .result-card-body { padding: 16px; }
+
+    .meta-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    }
+    .meta-item { font-size: 12px; }
+    .meta-item-label { color: var(--text-dim); font-family: var(--mono); font-size: 10px; margin-bottom: 2px; }
+    .meta-item-value { color: var(--text-br); font-weight: 500; }
+
+    .finding-list { list-style: none; padding: 0; margin: 0; }
+    .finding-list li {
+      padding: 6px 0; border-bottom: 1px solid var(--border);
+      font-size: 12px; color: var(--text); line-height: 1.6;
+      display: flex; gap: 8px;
+    }
+    .finding-list li:last-child { border-bottom: none; }
+    .finding-list li::before {
+      content: '→'; color: var(--green); flex-shrink: 0; margin-top: 1px;
+    }
+
+    .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .data-table th {
+      padding: 6px 10px; border-bottom: 1px solid var(--border);
+      color: var(--text-muted); font-family: var(--mono); font-size: 10px;
+      text-align: left; font-weight: 500; text-transform: uppercase;
+    }
+    .data-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table .mono { font-family: var(--mono); }
+    .data-table .val { color: var(--green); font-family: var(--mono); font-weight: 600; }
+
+    .formula-display {
+      background: var(--bg-2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 12px 14px;
+      font-family: var(--mono); font-size: 12px; color: var(--text-br);
+      line-height: 1.8; white-space: pre-wrap; margin-bottom: 14px;
+    }
+
+    .tag-model-found {
+      background: var(--green-soft); color: var(--green);
+      border: 1px solid var(--green-line); border-radius: 4px;
+      font-family: var(--mono); font-size: 9px; padding: 2px 6px;
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+    .tag-model-none {
+      background: var(--bg-3); color: var(--text-dim);
+      border: 1px solid var(--border); border-radius: 4px;
+      font-family: var(--mono); font-size: 9px; padding: 2px 6px;
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+
+    .import-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; background: var(--green-soft);
+      border-top: 1px solid var(--green-line);
+    }
+    .import-bar-text { font-size: 12px; color: var(--green); }
+
+    .error-box {
+      background: rgba(224,82,82,.1); border: 1px solid rgba(224,82,82,.3);
+      border-radius: var(--radius); padding: 12px 14px;
+      font-size: 12px; color: #e05252; margin-top: 12px; display: none;
+    }
+
+    /* ── Char counter ─────────────────────────────────────────────── */
+    .char-counter {
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+      text-align: right; margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Forráselemzés</h1>
+        <p class="page-sub">Tudományos cikk AI-alapú elemzése · paraméterek kinyerése · importálás a modell-könyvtárba</p>
+      </div>
+    </div>
+
+    <!-- API kulcs beállítás -->
+    <div class="api-panel" id="api-panel">
+      <div class="api-panel-head" onclick="toggleApiPanel()">
+        <span class="api-panel-title">
+          <span class="api-status-dot" id="api-dot"></span>
+          Claude API kulcs
+        </span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="api-head-hint">kattints a beállításhoz</span>
+      </div>
+      <div class="api-panel-body" id="api-panel-body">
+        <p class="api-note">
+          Az elemzéshez Anthropic Claude API kulcs szükséges. A kulcs kizárólag a böngésző
+          localStorage-jában tárolódik (<code>notox-claude-key</code>), a szerverre nem kerül fel.
+          API kulcsot az <strong>Anthropic Console</strong>-ban tudsz létrehozni.
+        </p>
+        <div class="api-row">
+          <input type="password" class="form-input" id="api-key-input"
+            placeholder="sk-ant-api03-…" style="flex:1;font-family:var(--mono);font-size:11px;" />
+          <button class="btn btn-primary" onclick="saveApiKey()">Mentés</button>
+          <button class="btn" onclick="clearApiKey()">Törlés</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload + paste -->
+    <div class="result-card" style="margin-bottom:16px;">
+      <div class="result-card-head">Forrás megadása</div>
+      <div class="result-card-body">
+
+        <div class="upload-zone" id="upload-zone">
+          <input type="file" id="file-input" accept=".pdf,.txt" onchange="onFileSelect(event)" />
+          <div class="upload-icon">
+            <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 2h7l3 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z"/>
+              <path d="M10 2v3h3"/><line x1="5" y1="8" x2="11" y2="8"/>
+              <line x1="5" y1="11" x2="9" y2="11"/>
+            </svg>
+          </div>
+          <div class="upload-label">PDF cikk feltöltése</div>
+          <div class="upload-sub">Húzd ide a fájlt, vagy kattints a böngészéshez · PDF, TXT</div>
+          <div class="upload-filename" id="upload-filename"></div>
+        </div>
+
+        <div class="or-divider">vagy illesszd be a szöveget</div>
+
+        <textarea class="paste-area" id="paste-area"
+          placeholder="Másold be ide a cikk szövegét (abstract, Methods, Results) …"
+          oninput="updateCharCount()"
+          rows="6"></textarea>
+        <div class="char-counter" id="char-counter">0 karakter</div>
+
+        <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
+          <button class="btn btn-primary" id="btn-analyze" onclick="startAnalysis()">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/>
+            </svg>
+            Elemzés indítása
+          </button>
+          <button class="btn" onclick="clearAll()">Törlés</button>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="model-label">
+            claude-haiku-4-5
+          </span>
+        </div>
+
+        <div class="progress-wrap" id="progress-wrap">
+          <div class="progress-label">
+            <span id="progress-text">Szöveg kinyerése…</span>
+            <span id="progress-pct">0%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div>
+        </div>
+
+        <div class="error-box" id="error-box"></div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div class="results-section" id="results-section">
+
+      <!-- Metaadatok -->
+      <div class="result-card">
+        <div class="result-card-head">Cikk metaadatok</div>
+        <div class="result-card-body">
+          <div class="meta-grid" id="meta-grid"></div>
+        </div>
+      </div>
+
+      <!-- Betegség adatok -->
+      <div class="result-card">
+        <div class="result-card-head">Betegség / Kórokozó adatok</div>
+        <div class="result-card-body">
+          <div class="meta-grid" id="disease-grid" style="margin-bottom:14px;"></div>
+          <p class="model-section-lbl" id="findings-lbl" style="display:none;">Főbb eredmények</p>
+          <ul class="finding-list" id="findings-list"></ul>
+        </div>
+      </div>
+
+      <!-- Egyéb numerikus adatok -->
+      <div class="result-card" id="other-card" style="display:none;">
+        <div class="result-card-head">Egyéb kinyert adatok</div>
+        <div class="result-card-body">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Kategória</th><th>Adat</th><th>Érték</th><th>Egység</th><th>Leírás</th>
+              </tr>
+            </thead>
+            <tbody id="other-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Modell -->
+      <div class="result-card" id="model-card">
+        <div class="result-card-head">
+          <span>Matematikai modell</span>
+          <span class="tag-model-found" id="model-found-tag" style="display:none;">Modell azonosítva</span>
+          <span class="tag-model-none" id="model-none-tag" style="display:none;">Nem található modell</span>
+        </div>
+        <div id="model-body-content">
+          <!-- filled by JS -->
+        </div>
+        <div class="import-bar" id="import-bar" style="display:none;">
+          <span class="import-bar-text">Paraméterek kinyerve — átemelhető a modell-könyvtárba</span>
+          <button class="btn btn-primary" onclick="importModel()">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 2v8M5 7l3 3 3-3"/><path d="M3 13h10"/>
+            </svg>
+            Importálás a modellek közé
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /results-section -->
+  </main>
+
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
+
+  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
+  <script src="/js/config.js"></script>
+  <script src="/js/shell.js"></script>
+  <script>
+    const CLAUDE_KEY_STORE = 'notox-claude-key';
+    const CLAUDE_MODEL     = 'claude-haiku-4-5';
+    const MAX_CHARS        = 60000;
+
+    let extractedText = '';
+    let lastResult    = null;
+
+    // ── API kulcs ─────────────────────────────────────────────────
+
+    function getApiKey() { return localStorage.getItem(CLAUDE_KEY_STORE) || ''; }
+
+    function saveApiKey() {
+      const k = document.getElementById('api-key-input').value.trim();
+      if (!k) return;
+      localStorage.setItem(CLAUDE_KEY_STORE, k);
+      updateApiStatus();
+      document.getElementById('api-panel').classList.remove('open');
+    }
+
+    function clearApiKey() {
+      localStorage.removeItem(CLAUDE_KEY_STORE);
+      document.getElementById('api-key-input').value = '';
+      updateApiStatus();
+    }
+
+    function toggleApiPanel() {
+      const p = document.getElementById('api-panel');
+      p.classList.toggle('open');
+      if (p.classList.contains('open')) {
+        const k = getApiKey();
+        if (k) document.getElementById('api-key-input').value = k;
+      }
+    }
+
+    function updateApiStatus() {
+      const hasKey = !!getApiKey();
+      const dot  = document.getElementById('api-dot');
+      const hint = document.getElementById('api-head-hint');
+      dot.className = 'api-status-dot' + (hasKey ? ' ok' : '');
+      hint.textContent = hasKey ? 'kulcs beállítva ✓' : 'kattints a beállításhoz';
+    }
+
+    // ── File / paste ──────────────────────────────────────────────
+
+    function onFileSelect(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const fn = document.getElementById('upload-filename');
+      fn.style.display = 'block';
+      fn.textContent = `📄 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    }
+
+    function updateCharCount() {
+      const t = document.getElementById('paste-area').value;
+      const c = document.getElementById('char-counter');
+      c.textContent = `${t.length.toLocaleString('hu')} karakter`;
+      c.style.color = t.length > MAX_CHARS ? '#e05252' : 'var(--text-dim)';
+    }
+
+    // Drag & drop
+    const zone = document.getElementById('upload-zone');
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault();
+      zone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        document.getElementById('file-input').files = e.dataTransfer.files;
+        onFileSelect({ target: { files: [file] } });
+      }
+    });
+
+    // ── PDF text extraction ───────────────────────────────────────
+
+    async function extractPDFText(file) {
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      let text = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        text += content.items.map(it => it.str).join(' ') + '\n';
+        setProgress(10 + Math.round((i / pdf.numPages) * 30), `Oldal kinyerése: ${i}/${pdf.numPages}`);
+      }
+      return text;
+    }
+
+    // ── Progress ──────────────────────────────────────────────────
+
+    function setProgress(pct, label) {
+      document.getElementById('progress-fill').style.width = pct + '%';
+      document.getElementById('progress-pct').textContent = pct + '%';
+      document.getElementById('progress-text').textContent = label;
+    }
+
+    function showProgress() { document.getElementById('progress-wrap').style.display = 'block'; }
+    function hideProgress() { document.getElementById('progress-wrap').style.display = 'none'; }
+
+    function showError(msg) {
+      const b = document.getElementById('error-box');
+      b.textContent = msg;
+      b.style.display = 'block';
+    }
+    function hideError() { document.getElementById('error-box').style.display = 'none'; }
+
+    // ── Claude API call ───────────────────────────────────────────
+
+    async function callClaude(text) {
+      const key = getApiKey();
+      if (!key) throw new Error('Nincs Claude API kulcs beállítva. Kattints a „Claude API kulcs" panelre.');
+
+      const truncated = text.length > MAX_CHARS ? text.slice(0, MAX_CHARS) + '\n[... cikk csonkítva]' : text;
+
+      const prompt = `Te egy agrártudomány-specifikus AI elemző vagy. Elemezd az alábbi tudományos cikket.
+Válaszolj KIZÁRÓLAG érvényes JSON formátumban — semmi más szöveg, csak a JSON objektum.
+
+A visszaadott JSON struktúra legyen pontosan ez:
+{
+  "metadata": {
+    "title": "cikk teljes címe",
+    "authors": "szerzők vesszővel elválasztva",
+    "year": <szám vagy null>,
+    "doi": "<doi szöveg vagy null>",
+    "journal": "<folyóirat neve vagy null>"
+  },
+  "disease": {
+    "pathogen": "kórokozó latin neve",
+    "host": "gazdanövény(ek)",
+    "disease_name": "betegség neve",
+    "key_findings": ["főbb eredmény 1", "főbb eredmény 2"]
+  },
+  "model": {
+    "found": <true vagy false>,
+    "type": "<gaussian|logistic|linear|threshold|other vagy null>",
+    "description": "<modell rövid leírása vagy null>",
+    "formula": "<matematikai képlet szöveges formában vagy null>",
+    "parameters": [
+      {
+        "name": "paraméter neve (pl. T_opt)",
+        "symbol": "szimbólum (pl. T_opt)",
+        "value": <szám vagy null>,
+        "unit": "mértékegység (pl. °C)",
+        "description": "leírás magyarul"
+      }
+    ],
+    "threshold": {
+      "value": <szám vagy null>,
+      "unit": "mértékegység",
+      "description": "mikor van magas kockázat"
+    },
+    "validation_accuracy": <szám 0–1 között vagy null>,
+    "validation_notes": "<validálási megjegyzések vagy null>"
+  },
+  "other_data": [
+    {
+      "category": "kategória (pl. epidemiológia, klíma, agrotechnika, toxin)",
+      "key": "adat neve",
+      "value": "érték",
+      "unit": "<mértékegység vagy null>",
+      "description": "kontextus"
+    }
+  ]
+}
+
+Fontos szabályok:
+- Ha nincs matematikai modell a cikkben: model.found = false, parameters = []
+- other_data tartalmazza az összes releváns számszerű adatot (hozamveszteség %, fertőzési ráta, toxinszintek, klimatikus határértékek, stb.)
+- Csak a cikkben ténylegesen szereplő adatokat add vissza
+- A JSON legyen érvényes, teljes és jól formázott
+
+Cikk szövege:
+---
+${truncated}
+---`;
+
+      const resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+          'anthropic-dangerous-direct-browser-calls': 'true',
+        },
+        body: JSON.stringify({
+          model: CLAUDE_MODEL,
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(`Claude API hiba ${resp.status}: ${err?.error?.message || resp.statusText}`);
+      }
+
+      const data = await resp.json();
+      const raw = data.content?.[0]?.text || '';
+
+      // Extract JSON (Claude might add backticks occasionally)
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error('A Claude válasza nem érvényes JSON. Próbáld újra.');
+      return JSON.parse(match[0]);
+    }
+
+    // ── Main flow ─────────────────────────────────────────────────
+
+    async function startAnalysis() {
+      hideError();
+      document.getElementById('results-section').style.display = 'none';
+
+      const fileInput = document.getElementById('file-input');
+      const pasteArea = document.getElementById('paste-area');
+      const file = fileInput.files[0];
+      const pasteText = pasteArea.value.trim();
+
+      if (!file && !pasteText) {
+        showError('Tölts fel egy PDF fájlt, vagy illesszd be a cikk szövegét.');
+        return;
+      }
+
+      const btn = document.getElementById('btn-analyze');
+      btn.disabled = true;
+      showProgress();
+      setProgress(5, 'Előkészítés…');
+
+      try {
+        // Step 1: extract text
+        let text = pasteText;
+        if (file) {
+          setProgress(10, 'PDF feldolgozása…');
+          if (file.name.endsWith('.pdf')) {
+            text = await extractPDFText(file);
+          } else {
+            text = await file.text();
+          }
+        }
+
+        if (!text || text.length < 50) {
+          throw new Error('Nem sikerült szöveget kinyerni a fájlból. Próbáld a szöveg beillesztésével.');
+        }
+
+        extractedText = text;
+        setProgress(45, 'Küldés Claude-nak…');
+
+        // Step 2: Claude analysis
+        const result = await callClaude(text);
+        lastResult = result;
+        setProgress(95, 'Eredmények megjelenítése…');
+
+        renderResults(result);
+        setProgress(100, 'Kész!');
+        setTimeout(() => {
+          hideProgress();
+          document.getElementById('results-section').style.display = 'block';
+          document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
+        }, 400);
+
+      } catch (err) {
+        hideProgress();
+        showError(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ── Render results ────────────────────────────────────────────
+
+    function renderResults(r) {
+      renderMeta(r.metadata || {});
+      renderDisease(r.disease || {});
+      renderOtherData(r.other_data || []);
+      renderModel(r.model || {});
+    }
+
+    function escHtml(s) {
+      return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    function metaItem(label, value) {
+      if (!value && value !== 0) return '';
+      // value can be a pre-built HTML string (e.g. DOI link) — only escape plain strings
+      const safe = typeof value === "string" && !value.startsWith("<") ? escHtml(value) : value;
+      return `<div class="meta-item">
+        <div class="meta-item-label">${escHtml(label)}</div>
+        <div class="meta-item-value">${safe}</div>
+      </div>`;
+    }
+
+    function renderMeta(m) {
+      document.getElementById('meta-grid').innerHTML = [
+        metaItem('Cím', m.title),
+        metaItem('Szerzők', m.authors),
+        metaItem('Év', m.year),
+        metaItem('DOI', m.doi ? `<a href="https://doi.org/${m.doi}" target="_blank" style="color:var(--green)">${m.doi}</a>` : null),
+        metaItem('Folyóirat', m.journal),
+      ].join('');
+    }
+
+    function renderDisease(d) {
+      document.getElementById('disease-grid').innerHTML = [
+        metaItem('Kórokozó', d.pathogen ? `<em>${escHtml(d.pathogen)}</em>` : null),
+        metaItem('Gazdanövény', d.host),
+        metaItem('Betegség', d.disease_name),
+      ].join('');
+
+      const findings = d.key_findings || [];
+      const lbl = document.getElementById('findings-lbl');
+      const list = document.getElementById('findings-list');
+      if (findings.length) {
+        lbl.style.display = 'block';
+        list.innerHTML = findings.map(f => `<li>${escHtml(f)}</li>`).join('');
+      } else {
+        lbl.style.display = 'none';
+        list.innerHTML = '';
+      }
+    }
+
+    function renderOtherData(items) {
+      const card = document.getElementById('other-card');
+      const tbody = document.getElementById('other-tbody');
+      if (!items.length) { card.style.display = 'none'; return; }
+      card.style.display = 'block';
+      tbody.innerHTML = items.map(it => `
+        <tr>
+          <td class="mono" style="color:var(--text-dim)">${escHtml(it.category || '—')}</td>
+          <td>${escHtml(it.key || '—')}</td>
+          <td class="val">${escHtml(String(it.value ?? '—'))}</td>
+          <td class="mono" style="color:var(--text-dim)">${escHtml(it.unit || '—')}</td>
+          <td style="color:var(--text-dim)">${escHtml(it.description || '')}</td>
+        </tr>`).join('');
+    }
+
+    function renderModel(m) {
+      const found = !!m.found;
+      document.getElementById('model-found-tag').style.display = found ? 'inline' : 'none';
+      document.getElementById('model-none-tag').style.display  = !found ? 'inline' : 'none';
+
+      const body = document.getElementById('model-body-content');
+      if (!found) {
+        body.innerHTML = `<div style="padding:16px;font-size:12px;color:var(--text-dim);">
+          A cikkben nem azonosítható parametrikus előrejelző modell.
+          Az „Egyéb adatok" szekcióban minden releváns szám megtalálható.
+        </div>`;
+        document.getElementById('import-bar').style.display = 'none';
+        return;
+      }
+
+      const params = m.parameters || [];
+      const paramRows = params.map(p => `
+        <tr>
+          <td>${p.name || '—'}</td>
+          <td class="mono">${p.symbol || '—'}</td>
+          <td class="val">${p.value ?? '—'}</td>
+          <td class="mono" style="color:var(--text-dim)">${p.unit || '—'}</td>
+          <td style="color:var(--text-dim)">${p.description || ''}</td>
+        </tr>`).join('');
+
+      const thresh = m.threshold;
+      const threshHtml = thresh
+        ? `<p style="font-size:12px;color:var(--text);margin:0 0 14px;">
+            Riasztási küszöb: <strong style="color:var(--green)">${thresh.value ?? '?'} ${thresh.unit || ''}</strong>
+            — ${thresh.description || ''}
+           </p>`
+        : '';
+
+      const validHtml = m.validation_accuracy != null
+        ? `<p style="font-size:11px;color:var(--text-dim);margin:0 0 6px;">
+            Validálási pontosság: <strong>${(m.validation_accuracy * 100).toFixed(0)}%</strong>
+            ${m.validation_notes ? '· ' + m.validation_notes : ''}
+           </p>`
+        : (m.validation_notes
+          ? `<p style="font-size:11px;color:var(--text-dim);margin:0 0 6px;">${m.validation_notes}</p>`
+          : '');
+
+      body.innerHTML = `<div style="padding:16px;">
+        ${m.description ? `<p style="font-size:12px;color:var(--text);line-height:1.7;margin:0 0 14px;">${m.description}</p>` : ''}
+        ${m.formula ? `<p class="model-section-lbl">Matematikai képlet</p>
+          <div class="formula-display">${m.formula}</div>` : ''}
+        ${threshHtml}
+        ${params.length ? `
+          <p class="model-section-lbl">Paraméterek</p>
+          <table class="data-table" style="margin-bottom:14px;">
+            <thead><tr>
+              <th>Paraméter</th><th>Szimbólum</th><th>Érték</th><th>Egység</th><th>Leírás</th>
+            </tr></thead>
+            <tbody>${paramRows}</tbody>
+          </table>` : ''}
+        ${validHtml}
+        ${m.type ? `<p style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin:4px 0 0;">
+          modell típusa: ${m.type.toUpperCase()}
+        </p>` : ''}
+      </div>`;
+
+      document.getElementById('import-bar').style.display = 'flex';
+    }
+
+    // ── Import to models ──────────────────────────────────────────
+
+    function importModel() {
+      if (!lastResult?.model?.found) return;
+      const m = lastResult.model;
+      const meta = lastResult.metadata || {};
+      const disease = lastResult.disease || {};
+
+      // Map Claude output → model form fields
+      const findParam = (symbols) => {
+        const syms = Array.isArray(symbols) ? symbols : [symbols];
+        for (const s of syms) {
+          const p = (m.parameters || []).find(p =>
+            p.symbol?.toLowerCase() === s.toLowerCase() ||
+            p.name?.toLowerCase().includes(s.toLowerCase())
+          );
+          if (p?.value != null) return p.value;
+        }
+        return null;
+      };
+
+      const pending = {
+        name:     meta.title ? meta.title.slice(0, 60) : 'Importált modell',
+        authors:  meta.authors || '',
+        year:     meta.year || '',
+        disease:  disease.pathogen || disease.disease_name || '',
+        doi:      meta.doi || '',
+        desc:     m.description || '',
+        type:     m.type || 'gaussian',
+        params: {
+          topt:      findParam(['T_opt', 'topt', 'T_opt', 'optimum']),
+          sigma:     findParam(['sigma', 'σ', 'sd', 'std']),
+          rh_thr:    findParam(['RH_thr', 'RH', 'rh', 'humidity']),
+          precip_min: findParam(['p_min', 'precip', 'rain', 'precipitation']),
+          risk_thr:  m.threshold?.value ?? null,
+        },
+      };
+
+      localStorage.setItem('notox-pending-import', JSON.stringify(pending));
+      window.location.href = '/models.html';
+    }
+
+    // ── Clear all ─────────────────────────────────────────────────
+
+    function clearAll() {
+      document.getElementById('file-input').value = '';
+      document.getElementById('upload-filename').style.display = 'none';
+      document.getElementById('paste-area').value = '';
+      document.getElementById('char-counter').textContent = '0 karakter';
+      document.getElementById('results-section').style.display = 'none';
+      extractedText = '';
+      lastResult = null;
+      hideError();
+      hideProgress();
+    }
+
+    // ── Init ──────────────────────────────────────────────────────
+
+    updateApiStatus();
+  </script>
+</body>
+</html>

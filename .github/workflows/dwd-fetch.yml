@@ -1,0 +1,41 @@
+name: DWD ICON-EU frissítés
+
+on:
+  schedule:
+    # ICON-EU futási idők: 00, 06, 12, 18 UTC
+    # DWD ~2-3h után publikálja → mi 3h késéssel futunk
+    - cron: "0 3,9,15,21 * * *"
+  workflow_dispatch:   # kézi futtatás is lehetséges
+
+permissions:
+  contents: write      # git push-hoz szükséges
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Függőségek telepítése
+        run: |
+          sudo apt-get install -y libeccodes-dev
+          pip install cfgrib xarray numpy
+
+      - name: DWD ICON-EU letöltés és feldolgozás
+        run: python scripts/fetch_dwd.py
+
+      - name: JSON commitolása és pusholása
+        run: |
+          git config user.name  "DWD Bot"
+          git config user.email "bot@notox.hu"
+          git add data/dwd_hungary.json
+          git diff --staged --quiet \
+            && echo "Nincs változás, skip." \
+            || (git commit -m "🌤 DWD ICON-EU $(date -u '+%Y-%m-%d %H:%M UTC')" && git push)

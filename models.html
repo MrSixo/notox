@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>No-tox — Modellek</title>
+  <script src="/js/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .model-grid {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    /* Model list */
+    .model-list-card { background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+    .model-list-header {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: .06em;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .model-item {
+      padding: 12px 14px; border-bottom: 1px solid var(--border);
+      cursor: pointer; transition: background .12s;
+    }
+    .model-item:last-child { border-bottom: none; }
+    .model-item:hover { background: var(--bg-2); }
+    .model-item.active { background: var(--green-soft); border-left: 2px solid var(--green); }
+    .model-item-name { font-size: 12px; font-weight: 600; color: var(--text-br); margin-bottom: 2px; }
+    .model-item-meta { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+    .model-item-tag {
+      display: inline-block; font-family: var(--mono); font-size: 9px;
+      padding: 1px 5px; border-radius: 3px; margin-top: 4px;
+      text-transform: uppercase; letter-spacing: .04em;
+    }
+    .tag-builtin { background: var(--green-soft); color: var(--green); border: 1px solid var(--green-line); }
+    .tag-custom  { background: rgba(91,156,246,.1); color: var(--blue); border: 1px solid rgba(91,156,246,.2); }
+
+    /* Detail panel */
+    .model-detail { background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+    .model-detail-head { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .model-detail-head h2 { margin: 0 0 4px; font-size: 15px; color: var(--text-br); }
+    .model-authors { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+    .model-body { padding: 20px; }
+
+    .model-section-lbl {
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: .06em;
+      margin: 0 0 8px;
+    }
+    .model-desc { font-size: 12px; color: var(--text); line-height: 1.7; margin-bottom: 20px; }
+
+    /* Formula display */
+    .formula-box {
+      background: var(--bg-2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 16px;
+      font-family: var(--mono); font-size: 12px; color: var(--text-br);
+      line-height: 2; margin-bottom: 20px; overflow-x: auto;
+      white-space: pre-wrap;
+    }
+    .formula-comment { color: var(--text-dim); font-size: 11px; }
+
+    /* Parameter table */
+    .param-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 20px; }
+    .param-table th {
+      padding: 6px 10px; border-bottom: 1px solid var(--border);
+      color: var(--text-muted); font-family: var(--mono); font-size: 10px;
+      text-align: left; font-weight: 500; text-transform: uppercase;
+    }
+    .param-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+    .param-table tr:last-child td { border-bottom: none; }
+    .param-table .mono { font-family: var(--mono); }
+    .param-input {
+      background: var(--bg-3); border: 1px solid var(--border);
+      color: var(--text); border-radius: 4px; padding: 3px 6px;
+      font-family: var(--mono); font-size: 11px; width: 80px;
+      outline: none;
+    }
+    .param-input:focus { border-color: var(--green); }
+
+    /* Add model form */
+    .add-model-form { background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 14px; display: none; }
+    .add-model-form.open { display: block; }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+    .ref-link { color: var(--green); text-decoration: underline; text-underline-offset: 2px; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <main class="page-wrap">
+    <div class="page">
+
+      <div class="page-head">
+        <div>
+          <h1>Modellek</h1>
+          <div class="sub">Irodalmi matematikai modellek könyvtára · saját modellek hozzáadhatók</div>
+        </div>
+        <div class="right">
+          <button class="btn btn-primary" id="btn-add-model">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
+            Modell hozzáadása
+          </button>
+        </div>
+      </div>
+
+      <!-- Add form -->
+      <div class="add-model-form" id="add-model-form">
+        <div style="font-size:13px;font-weight:600;color:var(--text-br);margin-bottom:16px;" id="form-title">Új modell</div>
+        <div class="form-grid-2" style="margin-bottom:12px;">
+          <div class="field"><label>Modell neve</label><input id="m-name" type="text" placeholder="pl. Stripe rust logistic" style="width:100%;"></div>
+          <div class="field"><label>Szerzők</label><input id="m-authors" type="text" placeholder="pl. Coakley et al." style="width:100%;"></div>
+        </div>
+        <div class="form-grid-3" style="margin-bottom:12px;">
+          <div class="field"><label>Megjelenés éve</label><input id="m-year" type="number" placeholder="2003" style="width:100%;"></div>
+          <div class="field"><label>Célbetegség</label><input id="m-disease" type="text" placeholder="pl. Sárgarozsda" style="width:100%;"></div>
+          <div class="field"><label>Modell típusa</label>
+            <select id="m-type" style="width:100%;">
+              <option value="gaussian">Gauss (temp optimum)</option>
+              <option value="logistic">Logisztikus</option>
+              <option value="linear_t">Lineáris hőfaktor (DD)</option>
+              <option value="custom">Egyéni</option>
+            </select>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:12px;"><label>Leírás / Megjegyzés</label><input id="m-desc" type="text" placeholder="Rövid leírás az alkalmazási feltételekről…" style="width:100%;"></div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Modell paraméterei</div>
+
+        <!-- Gauss / logistic params -->
+        <div id="params-gaussian" class="form-grid-3" style="margin-bottom:16px;">
+          <div class="field"><label>T optimum (°C)</label><input id="m-topt" type="number" step="0.1" value="22.5" style="width:100%;"></div>
+          <div class="field"><label>T szórás σ (°C)</label><input id="m-sigma" type="number" step="0.1" value="6" style="width:100%;"></div>
+          <div class="field"><label>RH küszöb (%)</label><input id="m-rh" type="number" step="1" value="60" style="width:100%;"></div>
+          <div class="field"><label>Min. csapadék (mm)</label><input id="m-precip" type="number" step="0.1" value="1" style="width:100%;"></div>
+          <div class="field"><label>Riasztási küszöb (0–100)</label><input id="m-thr" type="number" step="1" value="50" style="width:100%;"></div>
+          <div class="field"><label>DOI / Hivatkozás</label><input id="m-doi" type="text" placeholder="10.xxxx/…" style="width:100%;"></div>
+        </div>
+
+        <!-- linear_t params -->
+        <div id="params-linear-t" class="form-grid-3" style="display:none;margin-bottom:16px;">
+          <div class="field"><label>Bázishőm. T_base (°C)</label><input id="m-tbase" type="number" step="0.5" value="10" style="width:100%;"></div>
+          <div class="field"><label>Max. napi DD (°C)</label><input id="m-ddmax" type="number" step="0.5" value="15" style="width:100%;"></div>
+          <div class="field"><label>RH küszöb (%)</label><input id="m-rh-lt" type="number" step="1" value="60" style="width:100%;"></div>
+          <div class="field"><label>Riasztási küszöb (0–100)</label><input id="m-thr-lt" type="number" step="1" value="40" style="width:100%;"></div>
+          <div class="field"><label>DOI / Hivatkozás</label><input id="m-doi-lt" type="text" placeholder="10.xxxx/…" style="width:100%;"></div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" id="btn-save-model">Mentés</button>
+          <button class="btn" id="btn-cancel-model">Mégse</button>
+        </div>
+      </div>
+
+      <!-- Main layout -->
+      <div class="model-grid" id="model-grid">
+        <div class="model-list-card">
+          <div class="model-list-header">
+            <span>Modellek</span>
+            <span id="model-count" style="color:var(--text-br);">—</span>
+          </div>
+          <div id="model-list"></div>
+        </div>
+        <div class="model-detail" id="model-detail">
+          <div style="display:flex;align-items:center;justify-content:center;height:300px;color:var(--text-dim);flex-direction:column;gap:10px;">
+            <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" opacity=".3"><path d="M3 5h10M3 8h7M3 11h4M13 9l2 2-2 2"/></svg>
+            <span style="font-size:12px;">Válassz modellt a listából</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
+  <script src="/js/config.js"></script>
+  <script src="/js/shell.js"></script>
+  <script>
+    const STORAGE_KEY = "notox-models";
+
+    // ── Built-in models ────────────────────────────────────────────────────
+    const BUILTIN_MODELS = [
+      {
+        id: "__dewolf2003",
+        name: "Fuzárium kalász-rothadás (FHB)",
+        authors: "De Wolf, Madden & Lipps",
+        year: 2003,
+        disease: "Fusarium graminearum",
+        type: "gaussian",
+        doi: "10.1094/PHYTO.2003.93.4.428",
+        desc: "Napi hőmérséklet-alapú Gauss-modell, páratartalom- és csapadékkorrekciókkal. Az eredeti modell búza és árpa fuzárium-kockázatára vonatkozik virágzás körüli időszakban.",
+        params: { topt: 22.5, sigma: 6, rh_thr: 60, precip_min: 1, risk_thr: 50 },
+        builtin: true,
+      },
+      {
+        id: "__wolf1999",
+        name: "Fuzárium (egyszerűsített logisztikus)",
+        authors: "Wolf, Hubs & Smiley",
+        year: 1999,
+        disease: "Fusarium spp.",
+        type: "logistic",
+        doi: "",
+        desc: "Logisztikus regresszión alapuló modell, amely a fertőzési valószínűséget hőmérséklet és 7 napos páratartalom-átlag alapján becsüli.",
+        params: { topt: 20, sigma: 8, rh_thr: 65, precip_min: 2, risk_thr: 40 },
+        builtin: true,
+      },
+      {
+        id: "__coakley1988",
+        name: "Sárgarozsda (stripe rust)",
+        authors: "Coakley, Line & McDaniel",
+        year: 1988,
+        disease: "Puccinia striiformis",
+        type: "gaussian",
+        doi: "",
+        desc: "Lineáris szimulációs modell sárgarozsdára. Optimális hőmérséklet 8–15 °C, magas páratartalom (>80%) szükséges a fertőzéshez.",
+        params: { topt: 11, sigma: 5, rh_thr: 80, precip_min: 0.5, risk_thr: 30 },
+        builtin: true,
+      },
+      {
+        id: "__madden1981",
+        name: "Levélrozsda (leaf rust) — Madden",
+        authors: "Madden, Pennypacker & MacNab",
+        year: 1981,
+        disease: "Puccinia triticina",
+        type: "gaussian",
+        doi: "",
+        desc: "FAST modell kiterjesztése levélrozsdára. Közepes-magas hőmérséklet (15–25 °C) és legalább 6 órás levélen maradó harmat szükséges.",
+        params: { topt: 20, sigma: 6, rh_thr: 75, precip_min: 0.2, risk_thr: 35 },
+        builtin: true,
+      },
+      {
+        id: "__pscheidt1993",
+        name: "Lisztharmat (powdery mildew)",
+        authors: "Pscheidt & Stevenson",
+        year: 1993,
+        disease: "Erysiphe graminis",
+        type: "gaussian",
+        doi: "",
+        desc: "Száraz, meleg körülmények közt terjedő lisztharmat kockázatbecslése. Magas hőmérséklet (18–25 °C), alacsony-közepes páratartalom kedvez a terjedésnek.",
+        params: { topt: 21, sigma: 5, rh_thr: 55, precip_min: 0, risk_thr: 40 },
+        builtin: true,
+      },
+    ];
+
+    function loadCustom() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
+    }
+    function saveCustom(models) { localStorage.setItem(STORAGE_KEY, JSON.stringify(models)); }
+    function genId() { return "m_" + Math.random().toString(36).slice(2, 9); }
+
+    function allModels() { return [...BUILTIN_MODELS, ...loadCustom()]; }
+
+    // ── Render list ────────────────────────────────────────────────────────
+    let activeId = null;
+    let editingId = null;
+
+    function updateParamSections(type) {
+      const isGauss  = type === "gaussian" || type === "logistic" || type === "custom";
+      const isLinear = type === "linear_t";
+      document.getElementById("params-gaussian").style.display  = isGauss  ? "" : "none";
+      document.getElementById("params-linear-t").style.display = isLinear ? "" : "none";
+    }
+
+    function renderList() {
+      const models = allModels();
+      document.getElementById("model-count").textContent = models.length;
+      document.getElementById("model-list").innerHTML = models.map(m => `
+        <div class="model-item${m.id === activeId ? " active" : ""}" onclick="showModel('${m.id}')">
+          <div class="model-item-name">${m.name}</div>
+          <div class="model-item-meta">${m.authors}, ${m.year}</div>
+          <div>
+            <span class="model-item-tag ${m.builtin ? "tag-builtin" : "tag-custom"}">${m.builtin ? "beépített" : "egyéni"}</span>
+            <span class="model-item-tag" style="background:transparent;border-color:var(--border);color:var(--text-dim);">${m.type}</span>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    // ── Render detail ──────────────────────────────────────────────────────
+    function formulaText(m) {
+      const p = m.params;
+      if (m.type === "gaussian") return (
+        `R = gauss(T, μ=${p.topt}, σ=${p.sigma}) × RH_factor × precip_factor × 100\n\n` +
+        `<span class="formula-comment">ahol:</span>\n` +
+        `  gauss(T) = exp(−0.5 × ((T − ${p.topt}) / ${p.sigma})²)\n` +
+        `  RH_factor = min(1, max(0, (RH − ${p.rh_thr}) / (100 − ${p.rh_thr})))\n` +
+        `  precip_factor = 1 − exp(−precip / ${p.precip_min || 1})\n\n` +
+        `<span class="formula-comment">Riasztási küszöb: R ≥ ${p.risk_thr}</span>`
+      );
+      if (m.type === "logistic") return (
+        `P(fertőzés) = 1 / (1 + exp(−(β₀ + β₁·T + β₂·RH)))\n\n` +
+        `<span class="formula-comment">Közelítés Gauss-kernellel (T_opt=${p.topt}, σ=${p.sigma}):</span>\n` +
+        `  R = P × RH_factor × 100\n` +
+        `<span class="formula-comment">Riasztási küszöb: R ≥ ${p.risk_thr}</span>`
+      );
+      if (m.type === "linear_t") return (
+        `R = min(1, DD / ${p.dd_max}) × RH_factor × 100\n\n` +
+        `<span class="formula-comment">ahol:</span>\n` +
+        `  DD = max(0, T_napi − ${p.t_base}) [napi hőfaktor]\n` +
+        `  RH_factor = max(0, (RH − ${p.rh_thr}) / (100 − ${p.rh_thr}))\n\n` +
+        `<span class="formula-comment">Riasztási küszöb: R ≥ ${p.risk_thr}</span>`
+      );
+      return `R = f(T, RH, precip) — egyéni formula\n<span class="formula-comment">Paraméterei: T_opt=${p.topt}, σ=${p.sigma}, RH_thr=${p.rh_thr}%, precip_min=${p.precip_min}mm</span>`;
+    }
+
+    function showModel(id) {
+      activeId = id;
+      renderList();
+      const m = allModels().find(x => x.id === id);
+      if (!m) return;
+
+      const deleteBtn = m.builtin ? "" :
+        `<button class="btn btn-sm" style="color:var(--red);border-color:rgba(224,82,82,.3);" onclick="deleteModel('${m.id}')">Törlés</button>`;
+      const editBtn = m.builtin ? "" :
+        `<button class="btn btn-sm" onclick="editModel('${m.id}')">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M11 4l1 1-6 6H5v-1l6-6z"/><path d="M13 2l1 1"/></svg>
+          Szerkesztés
+        </button>`;
+      const cloneBtn =
+        `<button class="btn btn-sm" onclick="cloneModel('${m.id}')">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="5" y="5" width="8" height="8" rx="1"/><path d="M3 11H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v1"/></svg>
+          Variáns létrehozása
+        </button>`;
+
+      document.getElementById("model-detail").innerHTML = `
+        <div class="model-detail-head">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <h2>${m.name}</h2>
+              <div class="model-authors">${m.authors} · ${m.year}
+                ${m.doi ? `· <a class="ref-link" href="https://doi.org/${m.doi}" target="_blank">${m.doi}</a>` : ""}
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;">${cloneBtn}${editBtn}${deleteBtn}</div>
+          </div>
+        </div>
+        <div class="model-body">
+          <p class="model-section-lbl">Leírás</p>
+          <p class="model-desc">${m.desc || "—"}</p>
+
+          <p class="model-section-lbl">Matematikai formula</p>
+          <div class="formula-box">${formulaText(m)}</div>
+
+          <p class="model-section-lbl">Paraméterek</p>
+          <table class="param-table">
+            <thead><tr><th>Paraméter</th><th>Szimbólum</th><th>Érték</th><th>Leírás</th></tr></thead>
+            <tbody>${m.type === "linear_t" ? `
+              <tr><td>Bázishőmérséklet</td><td class="mono">T_base</td><td class="mono">${m.params.t_base ?? 10} °C</td><td>E felett indul a hőfaktor</td></tr>
+              <tr><td>Max. napi DD</td><td class="mono">DD_max</td><td class="mono">${m.params.dd_max ?? 15} °C</td><td>Ennél kockázat = 100</td></tr>
+              <tr><td>RH küszöb</td><td class="mono">RH_thr</td><td class="mono">${m.params.rh_thr ?? 60} %</td><td>E felett indul a kockázat</td></tr>
+              <tr><td>Riasztási küszöb</td><td class="mono">R_thr</td><td class="mono">${m.params.risk_thr ?? 40} / 100</td><td>E felett „magas kockázat"</td></tr>
+            ` : `
+              <tr><td>Hőm. optimum</td><td class="mono">T_opt</td><td class="mono">${m.params.topt} °C</td><td>Ennél a hőmérsékletnél maximális a kockázat</td></tr>
+              <tr><td>Hőm. szórás</td><td class="mono">σ</td><td class="mono">${m.params.sigma} °C</td><td>Gauss-görbe szélességét adja meg</td></tr>
+              <tr><td>RH küszöb</td><td class="mono">RH_thr</td><td class="mono">${m.params.rh_thr} %</td><td>E felett indul a kockázat</td></tr>
+              <tr><td>Min. csapadék</td><td class="mono">p_min</td><td class="mono">${m.params.precip_min} mm</td><td>Csapadék-tényező telítési paramétere</td></tr>
+              <tr><td>Riasztási küszöb</td><td class="mono">R_thr</td><td class="mono">${m.params.risk_thr} / 100</td><td>E felett „magas kockázat"</td></tr>
+            `}</tbody>
+          </table>
+
+          <p class="model-section-lbl">Célbetegség</p>
+          <p class="model-desc" style="margin-bottom:0;font-style:italic;">${m.disease}</p>
+        </div>
+      `;
+    }
+
+    function deleteModel(id) {
+      if (!confirm("Biztosan törlöd ezt a modellt?")) return;
+      saveCustom(loadCustom().filter(m => m.id !== id));
+      if (activeId === id) {
+        activeId = null;
+        document.getElementById("model-detail").innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:300px;color:var(--text-dim);flex-direction:column;gap:10px;"><svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" opacity=".3"><path d="M3 5h10M3 8h7M3 11h4M13 9l2 2-2 2"/></svg><span style="font-size:12px;">Válassz modellt a listából</span></div>`;
+      }
+      renderList();
+    }
+
+    // ── Clone as variant ───────────────────────────────────────────────────
+    function cloneModel(id) {
+      const m = allModels().find(x => x.id === id);
+      if (!m) return;
+
+      // Auto-number: count existing variants with this base name
+      const baseName = m.name.replace(/ — \d+\. variáns$/, "");
+      const existing = allModels().filter(x =>
+        x.name === baseName || x.name.startsWith(baseName + " — ")
+      ).length;
+      const variantName = `${baseName} — ${existing + 1}. variáns`;
+
+      document.getElementById("form-title").textContent = `Variáns: ${baseName}`;
+      document.getElementById("m-name").value    = variantName;
+      document.getElementById("m-authors").value = m.authors;
+      document.getElementById("m-year").value    = m.year;
+      document.getElementById("m-disease").value = m.disease;
+      document.getElementById("m-type").value    = m.type;
+      document.getElementById("m-doi").value     = m.doi || "";
+      document.getElementById("m-desc").value    = m.desc || "";
+      document.getElementById("m-topt").value    = m.params.topt;
+      document.getElementById("m-sigma").value   = m.params.sigma;
+      document.getElementById("m-rh").value      = m.params.rh_thr;
+      document.getElementById("m-precip").value  = m.params.precip_min;
+      document.getElementById("m-thr").value     = m.params.risk_thr;
+
+      // linear_t params
+      if (m.type === "linear_t") {
+        document.getElementById("m-tbase").value  = m.params.t_base  ?? 10;
+        document.getElementById("m-ddmax").value  = m.params.dd_max  ?? 15;
+        document.getElementById("m-rh-lt").value  = m.params.rh_thr  ?? 60;
+        document.getElementById("m-thr-lt").value = m.params.risk_thr ?? 40;
+        document.getElementById("m-doi-lt").value = m.doi || "";
+      }
+      updateParamSections(m.type);
+
+      document.getElementById("add-model-form").classList.add("open");
+      document.getElementById("m-topt").focus();
+    }
+
+    function editModel(id) {
+      const m = loadCustom().find(x => x.id === id);
+      if (!m) return;
+      editingId = id;
+      document.getElementById("form-title").textContent = `Szerkesztés: ${m.name}`;
+      document.getElementById("m-name").value    = m.name;
+      document.getElementById("m-authors").value = m.authors;
+      document.getElementById("m-year").value    = m.year;
+      document.getElementById("m-disease").value = m.disease;
+      document.getElementById("m-type").value    = m.type;
+      document.getElementById("m-desc").value    = m.desc || "";
+
+      updateParamSections(m.type);
+
+      if (m.type === "linear_t") {
+        document.getElementById("m-tbase").value  = m.params.t_base  ?? 10;
+        document.getElementById("m-ddmax").value  = m.params.dd_max  ?? 15;
+        document.getElementById("m-rh-lt").value  = m.params.rh_thr  ?? 60;
+        document.getElementById("m-thr-lt").value = m.params.risk_thr ?? 40;
+        document.getElementById("m-doi-lt").value = m.doi || "";
+      } else {
+        document.getElementById("m-topt").value   = m.params.topt       ?? 22.5;
+        document.getElementById("m-sigma").value  = m.params.sigma      ?? 6;
+        document.getElementById("m-rh").value     = m.params.rh_thr     ?? 60;
+        document.getElementById("m-precip").value = m.params.precip_min ?? 1;
+        document.getElementById("m-thr").value    = m.params.risk_thr   ?? 50;
+        document.getElementById("m-doi").value    = m.doi || "";
+      }
+
+      document.getElementById("add-model-form").classList.add("open");
+      document.getElementById("m-name").focus();
+    }
+
+    // ── Add form ───────────────────────────────────────────────────────────
+    document.getElementById("btn-add-model").addEventListener("click", () => {
+      editingId = null;
+      document.getElementById("form-title").textContent = "Új modell";
+      updateParamSections(document.getElementById("m-type").value);
+      document.getElementById("add-model-form").classList.add("open");
+      document.getElementById("m-name").focus();
+    });
+
+    document.getElementById("m-type").addEventListener("change", function() {
+      updateParamSections(this.value);
+    });
+
+    function closeForm() {
+      editingId = null;
+      document.getElementById("add-model-form").classList.remove("open");
+      document.getElementById("form-title").textContent = "Új modell";
+    }
+
+    document.getElementById("btn-cancel-model").addEventListener("click", closeForm);
+    document.getElementById("btn-save-model").addEventListener("click", () => {
+      const name = document.getElementById("m-name").value.trim();
+      if (!name) return;
+      const type = document.getElementById("m-type").value;
+
+      let params;
+      if (type === "linear_t") {
+        params = {
+          type:     "linear_t",
+          t_base:   parseFloat(document.getElementById("m-tbase").value)  || 10,
+          dd_max:   parseFloat(document.getElementById("m-ddmax").value)  || 15,
+          rh_thr:   parseFloat(document.getElementById("m-rh-lt").value)  || 60,
+          risk_thr: parseFloat(document.getElementById("m-thr-lt").value) || 40,
+        };
+      } else {
+        params = {
+          topt:       parseFloat(document.getElementById("m-topt").value)   || 22.5,
+          sigma:      parseFloat(document.getElementById("m-sigma").value)  || 6,
+          rh_thr:     parseFloat(document.getElementById("m-rh").value)     || 60,
+          precip_min: parseFloat(document.getElementById("m-precip").value) || 1,
+          risk_thr:   parseFloat(document.getElementById("m-thr").value)    || 50,
+        };
+      }
+
+      const doi = type === "linear_t"
+        ? document.getElementById("m-doi-lt").value.trim()
+        : document.getElementById("m-doi").value.trim();
+
+      const custom = loadCustom();
+
+      if (editingId) {
+        // Szerkesztés: meglévő frissítése
+        const idx = custom.findIndex(m => m.id === editingId);
+        if (idx !== -1) {
+          custom[idx] = { ...custom[idx], name,
+            authors: document.getElementById("m-authors").value.trim() || "Ismeretlen",
+            year:    parseInt(document.getElementById("m-year").value) || new Date().getFullYear(),
+            disease: document.getElementById("m-disease").value.trim() || "—",
+            type, doi,
+            desc:    document.getElementById("m-desc").value.trim(),
+            params,
+          };
+        }
+        saveCustom(custom);
+        const savedId = editingId;
+        editingId = null;
+        closeForm();
+        renderList();
+        showModel(savedId);
+      } else {
+        // Új modell
+        const m = {
+          id: genId(), name,
+          authors: document.getElementById("m-authors").value.trim() || "Ismeretlen",
+          year:    parseInt(document.getElementById("m-year").value) || new Date().getFullYear(),
+          disease: document.getElementById("m-disease").value.trim() || "—",
+          type, doi,
+          desc:    document.getElementById("m-desc").value.trim(),
+          params, builtin: false,
+        };
+        custom.push(m);
+        saveCustom(custom);
+        closeForm();
+        renderList();
+        showModel(m.id);
+      }
+    });
+
+    renderList();
+    // Auto-select first model
+    if (BUILTIN_MODELS.length) showModel(BUILTIN_MODELS[0].id);
+
+    // ── Forráselemzés import ───────────────────────────────────────
+    const pendingRaw = localStorage.getItem('notox-pending-import');
+    if (pendingRaw) {
+      localStorage.removeItem('notox-pending-import');
+      try {
+        const p = JSON.parse(pendingRaw);
+        // Prefill form fields
+        const set = (id, val) => { if (val != null && val !== '') document.getElementById(id).value = val; };
+        set('m-name',    p.name);
+        set('m-authors', p.authors);
+        set('m-year',    p.year);
+        set('m-disease', p.disease);
+        set('m-doi',     p.doi);
+        set('m-desc',    p.desc);
+        if (p.type) {
+          const sel = document.getElementById('m-type');
+          if ([...sel.options].some(o => o.value === p.type)) sel.value = p.type;
+        }
+        if (p.params) {
+          set('m-topt',   p.params.topt);
+          set('m-sigma',  p.params.sigma);
+          set('m-rh',     p.params.rh_thr);
+          set('m-precip', p.params.precip_min);
+          set('m-thr',    p.params.risk_thr);
+        }
+        document.getElementById('form-title').textContent = 'Importált modell';
+        document.getElementById('add-model-form').classList.add('open');
+        document.getElementById('m-name').focus();
+      } catch {}
+    }
+  </script>
+</body>
+</html>

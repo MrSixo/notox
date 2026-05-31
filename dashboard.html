@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>No-tox — Dashboard</title>
+  <script src="/js/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    /* ── Location grid ── */
+    .loc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .loc-widget {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      position: relative;
+      transition: border-color .15s;
+    }
+    .loc-widget:hover { border-color: var(--green-line); }
+    .loc-widget.loading { opacity: .5; pointer-events: none; }
+
+    .loc-widget-head {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .loc-name {
+      font-size: 13px; font-weight: 600; color: var(--text-br);
+    }
+    .loc-coords {
+      font-family: var(--mono); font-size: 9px; color: var(--text-dim);
+      margin-top: 2px;
+    }
+    .loc-remove {
+      width: 20px; height: 20px; flex-shrink: 0;
+      display: grid; place-items: center;
+      background: transparent; border: none; cursor: pointer;
+      color: var(--text-dim); border-radius: 4px;
+      transition: background .12s, color .12s;
+      margin-top: -2px;
+    }
+    .loc-remove:hover { background: rgba(224,82,82,.15); color: var(--red); }
+
+    .loc-metrics {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 8px; margin-bottom: 12px;
+    }
+    .loc-metric { }
+    .loc-metric-lbl {
+      font-family: var(--mono); font-size: 9px; color: var(--text-dim);
+      letter-spacing: .04em; text-transform: uppercase; margin-bottom: 2px;
+    }
+    .loc-metric-val {
+      font-family: var(--mono); font-size: 18px; font-weight: 600;
+      color: var(--text-br);
+    }
+    .loc-metric-unit { font-size: 10px; color: var(--text-dim); font-weight: 400; }
+
+    .loc-risk-bar { margin-top: 8px; }
+    .loc-risk-lbl {
+      display: flex; justify-content: space-between;
+      font-family: var(--mono); font-size: 9px; color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+
+    /* Add widget card */
+    .loc-add-card {
+      background: transparent;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 8px; min-height: 160px;
+      cursor: pointer; color: var(--text-dim);
+      transition: border-color .15s, color .15s;
+    }
+    .loc-add-card:hover { border-color: var(--green); color: var(--green); }
+
+    /* Add form */
+    .add-form {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      margin-bottom: 24px;
+      display: none;
+    }
+    .add-form.open { display: block; }
+    .add-form-title {
+      font-size: 13px; font-weight: 600; color: var(--text-br);
+      margin: 0 0 16px;
+    }
+    .add-form-row {
+      display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
+    }
+    .add-form-row .field { flex: 1; min-width: 120px; }
+    .add-form-row .field-wide { flex: 2; min-width: 200px; }
+
+    /* Summary bar */
+    .summary-bar {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .summary-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--bg-1); border: 1px solid var(--border);
+      border-radius: 20px; padding: 5px 12px;
+      font-family: var(--mono); font-size: 11px; color: var(--text-muted);
+    }
+    .summary-pill .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+    .widget-skeleton {
+      height: 8px; background: var(--bg-3); border-radius: 4px; margin: 4px 0;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:1} }
+  </style>
+</head>
+<body>
+  <main class="page-wrap">
+    <div class="page">
+
+      <div class="page-head">
+        <div>
+          <h1>Dashboard</h1>
+          <div class="sub">Konfigurálható helyszín-widgetek · Ma: <span id="today-lbl"></span></div>
+        </div>
+        <div class="right">
+          <div class="spinner" id="spinner"></div>
+          <button class="btn btn-primary" id="btn-add-loc">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
+            Helyszín
+          </button>
+        </div>
+      </div>
+
+      <!-- Add location form -->
+      <div class="add-form" id="add-form">
+        <div class="add-form-title">Helyszín hozzáadása</div>
+
+        <!-- Geocoder search -->
+        <div style="margin-bottom:14px;position:relative;">
+          <label style="font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.04em;text-transform:uppercase;display:block;margin-bottom:4px;">Keresés helységnév alapján</label>
+          <div style="display:flex;gap:8px;">
+            <input id="inp-geocode" type="text" placeholder="pl. Debrecen, Kaposvár…"
+              style="flex:1;" autocomplete="off" />
+            <button class="btn" id="btn-geocode" style="flex-shrink:0;">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="6.5" cy="6.5" r="4"/><path d="M11 11l3 3"/></svg>
+              Keresés
+            </button>
+          </div>
+          <div id="geocode-results" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:100;
+            background:var(--bg-1);border:1px solid var(--border);border-radius:var(--radius);
+            margin-top:4px;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.4);"></div>
+        </div>
+
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-bottom:10px;letter-spacing:.04em;">— vagy add meg manuálisan —</div>
+
+        <div class="add-form-row">
+          <div class="field field-wide">
+            <label>Helyszín neve</label>
+            <input id="inp-name" type="text" placeholder="pl. Debrecen-tanya" style="width:100%;" />
+          </div>
+          <div class="field">
+            <label>Szélesség (lat)</label>
+            <input id="inp-lat" type="number" step="0.0001" placeholder="47.4979" style="width:100%;" />
+          </div>
+          <div class="field">
+            <label>Hosszúság (lon)</label>
+            <input id="inp-lon" type="number" step="0.0001" placeholder="19.0402" style="width:100%;" />
+          </div>
+          <div class="field" style="min-width:180px;">
+            <label>Kockázati modell</label>
+            <select id="inp-model" style="width:100%;"></select>
+          </div>
+          <div class="field" style="display:flex;align-items:flex-end;gap:6px;">
+            <button class="btn btn-primary" id="btn-save-loc">Mentés</button>
+            <button class="btn" id="btn-cancel-loc">Mégse</button>
+          </div>
+        </div>
+        <div style="margin-top:12px;">
+          <div class="sub" style="margin-bottom:8px;">Gyors kiválasztás:</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;" id="preset-btns"></div>
+        </div>
+      </div>
+
+      <!-- Summary bar -->
+      <div class="summary-bar" id="summary-bar" style="display:none;">
+        <div class="summary-pill"><span class="dot" style="background:var(--red);"></span><span id="sum-crit">0</span> kritikus helyszín</div>
+        <div class="summary-pill"><span class="dot" style="background:var(--amber);"></span><span id="sum-med">0</span> közepes kockázat</div>
+        <div class="summary-pill"><span class="dot" style="background:var(--green);"></span><span id="sum-low">0</span> alacsony kockázat</div>
+        <div class="summary-pill" style="margin-left:auto;border-color:transparent;background:transparent;color:var(--text-dim);" title="Forrás: Open-Meteo API · De Wolf 2003 kockázatmodell">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 5.5v.5"/></svg>
+          Forrás: Open-Meteo · <span id="sum-model">ICON-EU</span> &nbsp;·&nbsp; <span id="sum-updated">—</span>
+        </div>
+      </div>
+
+      <!-- Widget grid -->
+      <div class="loc-grid" id="loc-grid"></div>
+
+      <!-- Empty state -->
+      <div id="empty-state" style="display:none;text-align:center;padding:60px 0;color:var(--text-dim);">
+        <svg width="40" height="40" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" opacity=".3" style="margin-bottom:12px;">
+          <path d="M8 2a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM8 10v4M5 14h6"/>
+        </svg>
+        <div style="font-size:13px;margin-bottom:6px;">Még nincs helyszín</div>
+        <div style="font-size:11px;">Kattints a „+ Helyszín" gombra a hozzáadáshoz.</div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
+  <script src="/js/config.js"></script>
+  <script src="/js/shell.js"></script>
+  <script src="/js/openmeteo.js"></script>
+  <script src="/js/fusarium.js"></script>
+  <script>
+    const STORAGE_KEY = "notox-locations";
+
+    // ── Modell-registry (szinkronban a models.html BUILTIN_MODELS-szel) ──────
+    const BUILTIN_MODELS = [
+      { id: "__dewolf2003",    name: "Fuzárium (De Wolf 2003)",   params: { topt: 22.5, sigma: 6, rh_thr: 60, precip_min: 1,   risk_thr: 50 } },
+      { id: "__wolf1999",      name: "Fuzárium (Wolf 1999)",      params: { topt: 20,   sigma: 8, rh_thr: 65, precip_min: 2,   risk_thr: 40 } },
+      { id: "__coakley1988",   name: "Sárgarozsda",               params: { topt: 11,   sigma: 5, rh_thr: 80, precip_min: 0.5, risk_thr: 30 } },
+      { id: "__madden1981",    name: "Levélrozsda",               params: { topt: 20,   sigma: 6, rh_thr: 75, precip_min: 0.2, risk_thr: 35 } },
+      { id: "__pscheidt1993",  name: "Lisztharmat",               params: { topt: 21,   sigma: 5, rh_thr: 55, precip_min: 0,   risk_thr: 40 } },
+    ];
+    function loadAllModels() {
+      try {
+        const custom = JSON.parse(localStorage.getItem("notox-models") || "[]");
+        return [...BUILTIN_MODELS, ...custom];
+      } catch { return [...BUILTIN_MODELS]; }
+    }
+    function getModel(modelId) {
+      return loadAllModels().find(m => m.id === modelId) || BUILTIN_MODELS[0];
+    }
+    function runModelDay(params, tmean, rh, precip) {
+      if (tmean === null || rh === null) return 0;
+      if (params.type === "linear_t") {
+        const dd = Math.max(0, tmean - (params.t_base ?? 10));
+        const tF = Math.min(1, dd / (params.dd_max ?? 15));
+        const rhF = rh >= (params.rh_thr ?? 60) ? Math.min(1, (rh - (params.rh_thr ?? 60)) / (100 - (params.rh_thr ?? 60))) : 0;
+        return Math.min(1, tF * rhF);
+      }
+      const tF  = Math.exp(-0.5 * Math.pow((tmean - params.topt) / params.sigma, 2));
+      const rhF = rh >= params.rh_thr ? (rh - params.rh_thr) / (100 - params.rh_thr) : 0;
+      const pF  = (precip ?? 0) > 0 ? 1 - Math.exp(-(precip ?? 0) / (params.precip_min || 1)) : 0;
+      return Math.min(1, tF * rhF * pF);
+    }
+
+    // Időjárás adat gyorsítótár — modellváltásnál nem kell újra fetchelni
+    const _weatherCache = {};
+
+    const PRESETS = [
+      { name: "Budapest",            lat: 47.4979, lon: 19.0402 },
+      { name: "Debrecen",            lat: 47.8995, lon: 21.7184 },
+      { name: "Hódmezővásárhely",   lat: 46.2530, lon: 20.1414 },
+      { name: "Székesfehérvár",      lat: 47.1025, lon: 18.9122 },
+      { name: "Pécs",                lat: 46.0727, lon: 18.2323 },
+      { name: "Győr",                lat: 47.6875, lon: 17.6504 },
+      { name: "Kaposvár",            lat: 46.9000, lon: 18.0500 },
+      { name: "Miskolc",             lat: 48.1035, lon: 20.7784 },
+    ];
+
+    function loadLocs() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
+    }
+    function saveLocs(locs) { localStorage.setItem(STORAGE_KEY, JSON.stringify(locs)); }
+    function genId() { return Math.random().toString(36).slice(2, 9); }
+
+    function riskColor(risk) {
+      if (risk >= 75) return "var(--red)";
+      if (risk >= 50) return "#dc5a1e";
+      if (risk >= 20) return "var(--amber)";
+      return "var(--green)";
+    }
+
+    function renderSkeleton(id) {
+      return `<div class="loc-widget loading" id="w-${id}">
+        <div class="loc-widget-head">
+          <div></div>
+        </div>
+        <div class="widget-skeleton" style="width:60%;margin-bottom:12px;"></div>
+        <div class="widget-skeleton" style="width:80%;"></div>
+        <div class="widget-skeleton" style="width:40%;margin-top:8px;"></div>
+      </div>`;
+    }
+
+    function buildVerifyUrl(lat, lon) {
+      const p = new URLSearchParams({
+        latitude: lat, longitude: lon,
+        daily: "temperature_2m_max,temperature_2m_min,precipitation_sum,relative_humidity_2m_max,relative_humidity_2m_min",
+        forecast_days: 1, past_days: 1, timezone: "Europe/Budapest",
+      });
+      return `https://api.open-meteo.com/v1/forecast?${p}`;
+    }
+
+    function renderWidget(loc, data) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayActual = data ? (data.find(d => d.date === todayStr) || data[data.length - 1]) : null;
+
+      const model   = getModel(loc.modelId);
+      const risk    = todayActual !== null
+        ? Math.round(runModelDay(model.params, todayActual.tmean, todayActual.rh_mean, todayActual.precip) * 100)
+        : null;
+      const rl      = risk !== null ? riskLevel(risk) : null;
+
+      // Forrás-metaadatok
+      const isForecast  = todayActual?.is_forecast ?? false;
+      const dataDate    = todayActual?.date ?? "—";
+      const dataSource  = todayActual?.source === "ecmwf" ? "ECMWF IFS" : "ICON-EU";
+      const sourceLabel = isForecast ? `${dataSource} előrejelzés` : `${dataSource} mért`;
+      const sourceColor = isForecast ? "var(--text-dim)" : "var(--green)";
+      const verifyUrl   = buildVerifyUrl(loc.lat, loc.lon);
+
+      // Modell select opciók
+      const modelOpts = loadAllModels().map(m =>
+        `<option value="${m.id}"${m.id === model.id ? " selected" : ""}>${m.name}</option>`
+      ).join("");
+
+      const formulaTitle = todayActual
+        ? `Modell: ${model.name}\nForrás: Open-Meteo · ${sourceLabel}\nDátum: ${dataDate}\nBemenők: Hőm ${todayActual.tmean !== null ? todayActual.tmean.toFixed(1) : "—"}°C · Párat ${todayActual.rh_mean !== null ? Math.round(todayActual.rh_mean) : "—"}% · Csap ${todayActual.precip !== null ? todayActual.precip.toFixed(1) : "—"}mm`
+        : "";
+
+      return `<div class="loc-widget" id="w-${loc.id}">
+        <div class="loc-widget-head">
+          <div>
+            <div class="loc-name">${loc.name}</div>
+            <div class="loc-coords">${loc.lat.toFixed(3)}, ${loc.lon.toFixed(3)}</div>
+          </div>
+          <button class="loc-remove" title="Eltávolítás" onclick="removeLoc('${loc.id}')">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
+          </button>
+        </div>
+        ${todayActual ? `
+        ${todayActual.t_current !== null && todayActual.t_current !== undefined ? `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;
+          padding:7px 10px;background:var(--bg-2);border-radius:var(--radius);
+          border:1px solid var(--border);">
+          <div>
+            <div style="font-family:var(--mono);font-size:8px;color:var(--text-dim);
+              text-transform:uppercase;letter-spacing:.05em;margin-bottom:1px;">Jelenlegi</div>
+            <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--text-br);line-height:1;">
+              ${todayActual.t_current.toFixed(1)}<span style="font-size:11px;font-weight:400;color:var(--text-dim);">°C</span>
+            </div>
+          </div>
+          ${todayActual.rh_current !== null && todayActual.rh_current !== undefined ? `
+          <div style="border-left:1px solid var(--border);padding-left:10px;">
+            <div style="font-family:var(--mono);font-size:8px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1px;">RH</div>
+            <div style="font-family:var(--mono);font-size:15px;font-weight:600;color:var(--text-br);">${Math.round(todayActual.rh_current)}<span style="font-size:10px;font-weight:400;color:var(--text-dim);">%</span></div>
+          </div>` : ""}
+          <div style="margin-left:auto;text-align:right;">
+            <div style="font-family:var(--mono);font-size:8px;color:var(--text-dim);">
+              ${todayActual.current_time ? todayActual.current_time.slice(11,16) : ""}
+            </div>
+          </div>
+        </div>` : ""}
+        <div class="loc-metrics">
+          <div class="loc-metric">
+            <div class="loc-metric-lbl">Napi átlag (T̄)</div>
+            <div class="loc-metric-val">${todayActual.tmean !== null ? todayActual.tmean.toFixed(1) : "—"}<span class="loc-metric-unit">°C</span></div>
+          </div>
+          <div class="loc-metric">
+            <div class="loc-metric-lbl">RH átlag</div>
+            <div class="loc-metric-val">${todayActual.rh_mean !== null ? Math.round(todayActual.rh_mean) : "—"}<span class="loc-metric-unit">%</span></div>
+          </div>
+          <div class="loc-metric">
+            <div class="loc-metric-lbl">Csapadék (napi)</div>
+            <div class="loc-metric-val">${todayActual.precip !== null ? todayActual.precip.toFixed(1) : "—"}<span class="loc-metric-unit">mm</span></div>
+          </div>
+          <div class="loc-metric">
+            <div class="loc-metric-lbl">Min / Max</div>
+            <div class="loc-metric-val" style="font-size:13px;">${todayActual.tmin !== null ? todayActual.tmin.toFixed(0) : "—"} / ${todayActual.tmax !== null ? todayActual.tmax.toFixed(0) : "—"}<span class="loc-metric-unit">°C</span></div>
+          </div>
+        </div>
+        <div class="loc-risk-bar" title="${formulaTitle}">
+          <div class="loc-risk-lbl">
+            <select onchange="changeLocModel('${loc.id}', this.value)"
+              style="background:transparent;border:none;font-family:var(--mono);font-size:9px;
+                color:var(--text-dim);cursor:pointer;padding:0;max-width:140px;
+                outline:none;appearance:none;-webkit-appearance:none;">
+              ${modelOpts}
+            </select>
+            <span style="color:${riskColor(risk)};font-weight:600;">${risk} / 100 · ${rl.label}</span>
+          </div>
+          <div class="risk-bar"><div class="risk-bar-fill" style="width:${risk}%;background:${riskColor(risk)};"></div></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;
+          margin-top:8px;padding-top:7px;border-top:1px solid var(--border);">
+          <span style="font-family:var(--mono);font-size:9px;color:${sourceColor};">
+            ${dataDate} · ${sourceLabel}
+          </span>
+          <a href="${verifyUrl}" target="_blank" rel="noopener"
+            style="font-family:var(--mono);font-size:9px;color:var(--text-dim);
+              text-decoration:none;display:flex;align-items:center;gap:3px;
+              transition:color .12s;" title="Nyers adat megtekintése az Open-Meteo API-n"
+            onmouseover="this.style.color='var(--green)'" onmouseout="this.style.color='var(--text-dim)'">
+            ellenőrzés
+            <svg width="9" height="9" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 3H3v10h10V9M9 2h5v5M14 2L8 8"/></svg>
+          </a>
+        </div>
+        ` : `<div style="color:var(--text-dim);font-size:11px;padding:8px 0;">Betöltés sikertelen</div>`}
+      </div>`;
+    }
+
+    function changeLocModel(locId, modelId) {
+      const locs = loadLocs();
+      const idx  = locs.findIndex(l => l.id === locId);
+      if (idx === -1) return;
+      locs[idx].modelId = modelId;
+      saveLocs(locs);
+      // Újrarenderelés cache-ből — nincs új API hívás
+      const cached = _weatherCache[locId];
+      if (cached !== undefined) {
+        const el = document.getElementById(`w-${locId}`);
+        if (el) el.outerHTML = renderWidget(locs[idx], cached);
+        // Rizikótérkép frissítése
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const row = cached ? (cached.find(d => d.date === todayStr) || cached[cached.length - 1]) : null;
+        const model = getModel(modelId);
+        _riskMap[locId] = row ? Math.round(runModelDay(model.params, row.tmean, row.rh_mean, row.precip) * 100) : null;
+        updateSummary();
+      }
+    }
+
+    async function fetchAndRender(loc) {
+      try {
+        const data = await fetchWeather(loc.lat, loc.lon, 1);
+        _weatherCache[loc.id] = data;
+        const el = document.getElementById(`w-${loc.id}`);
+        if (el) el.outerHTML = renderWidget(loc, data);
+        // Rizikó felvétele a summary barba
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const row = data ? (data.find(d => d.date === todayStr) || data[data.length - 1]) : null;
+        const model = getModel(loc.modelId);
+        _riskMap[loc.id] = row ? Math.round(runModelDay(model.params, row.tmean, row.rh_mean, row.precip) * 100) : null;
+        updateSummary();
+      } catch {
+        const el = document.getElementById(`w-${loc.id}`);
+        if (el) el.classList.remove("loading");
+      }
+    }
+
+    function renderGrid() {
+      const locs = loadLocs();
+      const grid = document.getElementById("loc-grid");
+      const empty = document.getElementById("empty-state");
+      const sumBar = document.getElementById("summary-bar");
+
+      if (!locs.length) {
+        grid.innerHTML = "";
+        empty.style.display = "";
+        sumBar.style.display = "none";
+        return;
+      }
+
+      empty.style.display = "none";
+      sumBar.style.display = "";
+
+      grid.innerHTML = locs.map(l => renderSkeleton(l.id)).join("") +
+        `<div class="loc-add-card" onclick="openForm()">
+          <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
+          <span style="font-size:12px;">Helyszín hozzáadása</span>
+        </div>`;
+
+      // Reset risk map + weather cache
+      Object.keys(_riskMap).forEach(k => delete _riskMap[k]);
+      Object.keys(_weatherCache).forEach(k => delete _weatherCache[k]);
+      locs.forEach(l => { _riskMap[l.id] = null; });
+      locs.forEach(fetchAndRender);
+    }
+
+    // Tracks risk score per location id after fetch completes
+    const _riskMap = {};
+
+    function updateSummary() {
+      const values = Object.values(_riskMap).filter(v => v !== null);
+      const crit = values.filter(r => r >= 75).length;
+      const med  = values.filter(r => r >= 20 && r < 75).length;
+      const low  = values.filter(r => r < 20).length;
+      document.getElementById("sum-crit").textContent = crit;
+      document.getElementById("sum-med").textContent  = med;
+      document.getElementById("sum-low").textContent  = low;
+      // Forrásmodell és frissítési időbélyeg — csak ha már van legalább egy adat
+      if (values.length) {
+        const now = new Date();
+        document.getElementById("sum-updated").textContent =
+          `frissítve ${now.toLocaleTimeString("hu-HU", { hour: "2-digit", minute: "2-digit" })}`;
+        try {
+          const model = JSON.parse(localStorage.getItem("notox-settings-meteo") || "{}").weatherModel || "ecmwf";
+          document.getElementById("sum-model").textContent = model === "icon" ? "ICON-EU" : "ECMWF IFS";
+        } catch {}
+      }
+    }
+
+    // ── Geocoder (Nominatim) ──
+    let geocodeTimer = null;
+
+    function fillFromGeocode(result) {
+      document.getElementById("inp-name").value = result.name;
+      document.getElementById("inp-lat").value  = parseFloat(result.lat).toFixed(4);
+      document.getElementById("inp-lon").value  = parseFloat(result.lon).toFixed(4);
+      document.getElementById("geocode-results").style.display = "none";
+      document.getElementById("inp-geocode").value = result.name;
+    }
+
+    function showGeocodeResults(items) {
+      const box = document.getElementById("geocode-results");
+      if (!items.length) {
+        box.innerHTML = `<div style="padding:10px 12px;font-size:12px;color:var(--text-dim);">Nincs találat.</div>`;
+        box.style.display = "";
+        return;
+      }
+      box.innerHTML = items.map(r => {
+        const lat = parseFloat(r.lat).toFixed(4);
+        const lon = parseFloat(r.lon).toFixed(4);
+        const label = r.display_name.split(",").slice(0, 2).join(", ");
+        return `<div onclick='fillFromGeocode(${JSON.stringify({ name: label, lat: r.lat, lon: r.lon }).replace(/'/g,"&#39;")})'
+          style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s;"
+          onmouseenter="this.style.background='var(--bg-2)'" onmouseleave="this.style.background=''">
+          <div style="font-size:12px;color:var(--text-br);font-weight:500;">${escHtml(label)}</div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);">${lat}°N ${lon}°E</div>
+        </div>`;
+      }).join("");
+      box.style.display = "";
+    }
+
+    async function doGeocode() {
+      const q = document.getElementById("inp-geocode").value.trim();
+      if (q.length < 2) return;
+      const btn = document.getElementById("btn-geocode");
+      btn.disabled = true;
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=hu&accept-language=hu`;
+        const res = await fetch(url, { headers: { "Accept-Language": "hu" } });
+        if (!res.ok) throw new Error(`Nominatim hiba: ${res.status}`);
+        const data = await res.json();
+        showGeocodeResults(data);
+      } catch {
+        showGeocodeResults([]);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // ── Form ──
+    function openForm() {
+      // Modell select feltöltése
+      const sel = document.getElementById("inp-model");
+      sel.innerHTML = loadAllModels().map(m =>
+        `<option value="${m.id}">${m.name}</option>`
+      ).join("");
+      document.getElementById("add-form").classList.add("open");
+      document.getElementById("inp-geocode").focus();
+    }
+    function closeForm() {
+      document.getElementById("add-form").classList.remove("open");
+      document.getElementById("inp-geocode").value = "";
+      document.getElementById("geocode-results").style.display = "none";
+      document.getElementById("inp-name").value = "";
+      document.getElementById("inp-lat").value  = "";
+      document.getElementById("inp-lon").value  = "";
+    }
+
+    function saveNewLoc() {
+      const name    = document.getElementById("inp-name").value.trim();
+      const lat     = parseFloat(document.getElementById("inp-lat").value);
+      const lon     = parseFloat(document.getElementById("inp-lon").value);
+      const modelId = document.getElementById("inp-model").value || "__dewolf2003";
+      if (!name || isNaN(lat) || isNaN(lon)) return;
+      const locs = loadLocs();
+      locs.push({ id: genId(), name, lat, lon, modelId });
+      saveLocs(locs);
+      closeForm();
+      renderGrid();
+    }
+
+    function removeLoc(id) {
+      saveLocs(loadLocs().filter(l => l.id !== id));
+      renderGrid();
+    }
+
+    function pickPreset(p) {
+      document.getElementById("inp-name").value = p.name;
+      document.getElementById("inp-lat").value  = p.lat;
+      document.getElementById("inp-lon").value  = p.lon;
+    }
+
+    // ── Init ──
+    document.getElementById("today-lbl").textContent = new Date().toLocaleDateString("hu-HU", { year:"numeric", month:"long", day:"numeric" });
+
+    document.getElementById("btn-add-loc").addEventListener("click", openForm);
+    document.getElementById("btn-save-loc").addEventListener("click", saveNewLoc);
+    document.getElementById("btn-cancel-loc").addEventListener("click", closeForm);
+    document.getElementById("btn-geocode").addEventListener("click", doGeocode);
+    document.getElementById("inp-geocode").addEventListener("keydown", e => {
+      if (e.key === "Enter") doGeocode();
+    });
+    // Close dropdown on outside click
+    document.addEventListener("click", e => {
+      if (!e.target.closest("#add-form")) {
+        document.getElementById("geocode-results").style.display = "none";
+      }
+    });
+
+    // Preset buttons
+    document.getElementById("preset-btns").innerHTML = PRESETS.map(p =>
+      `<button class="btn btn-sm" onclick="pickPreset(${JSON.stringify(p).replace(/"/g,'&quot;')})">${p.name}</button>`
+    ).join("");
+
+    // Enter saves
+    ["inp-name","inp-lat","inp-lon"].forEach(id => {
+      document.getElementById(id).addEventListener("keydown", e => { if (e.key === "Enter") saveNewLoc(); });
+    });
+
+    renderGrid();
+
+    function escHtml(s) {
+      return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+  </script>
+</body>
+</html>

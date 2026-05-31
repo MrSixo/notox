@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>No-tox — Admin</title>
+  <script src="/js/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    /* ── Tabs ──────────────────────────────────────────────────── */
+    .admin-tabs {
+      display: flex; gap: 2px;
+      background: var(--bg-1); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 4px;
+      margin-bottom: 20px; width: fit-content;
+    }
+    .tab-btn {
+      background: none; border: none; cursor: pointer;
+      padding: 7px 16px; border-radius: calc(var(--radius-lg) - 3px);
+      font-family: var(--mono); font-size: 11px; color: var(--text-dim);
+      transition: background .12s, color .12s; display: flex; align-items: center; gap: 6px;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { background: var(--bg-3); color: var(--text-br); }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Cards ─────────────────────────────────────────────────── */
+    .admin-card {
+      background: var(--bg-1); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); margin-bottom: 16px; overflow: hidden;
+    }
+    .admin-card-head {
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: .06em;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .admin-card-body { padding: 16px; }
+    .admin-card-note {
+      font-size: 11px; color: var(--text-dim); margin-bottom: 12px; line-height: 1.6;
+    }
+
+    /* ── Setting rows ───────────────────────────────────────────── */
+    .setting-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+      gap: 16px;
+    }
+    .setting-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .setting-label { font-size: 12px; color: var(--text); font-weight: 500; flex: 1; }
+    .setting-sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+    .setting-control { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .setting-input {
+      width: 90px; background: var(--bg-2); border: 1px solid var(--border);
+      color: var(--text); border-radius: var(--radius); padding: 5px 8px;
+      font-family: var(--mono); font-size: 11px; outline: none;
+    }
+    .setting-input:focus { border-color: var(--green); }
+    .setting-input.wide { width: 200px; }
+
+    /* ── Key row ────────────────────────────────────────────────── */
+    .key-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .key-status {
+      font-family: var(--mono); font-size: 10px; padding: 2px 8px;
+      border-radius: 4px; white-space: nowrap;
+    }
+    .key-status.set    { background: var(--green-soft); color: var(--green); border: 1px solid var(--green-line); }
+    .key-status.unset  { background: var(--bg-3); color: var(--text-dim); border: 1px solid var(--border); }
+
+    /* ── User table ─────────────────────────────────────────────── */
+    .user-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .user-table th {
+      padding: 6px 10px; border-bottom: 1px solid var(--border);
+      color: var(--text-muted); font-family: var(--mono); font-size: 10px;
+      text-align: left; font-weight: 500; text-transform: uppercase;
+    }
+    .user-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    .user-table tr:last-child td { border-bottom: none; }
+    .role-badge {
+      display: inline-block; font-family: var(--mono); font-size: 9px;
+      padding: 2px 6px; border-radius: 4px; text-transform: uppercase;
+    }
+    .role-admin      { background: rgba(91,156,246,.15); color: var(--blue); border: 1px solid rgba(91,156,246,.25); }
+    .role-researcher { background: rgba(76,175,125,.12); color: var(--green); border: 1px solid rgba(76,175,125,.28); }
+    .role-user       { background: var(--bg-3); color: var(--text-dim); border: 1px solid var(--border); }
+
+    /* ── System / storage ───────────────────────────────────────── */
+    .storage-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 7px 10px; font-size: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .storage-row:last-child { border-bottom: none; }
+    .storage-key  { font-family: var(--mono); color: var(--text-dim); font-size: 11px; }
+    .storage-size { font-family: var(--mono); font-size: 11px; color: var(--text); }
+
+    /* ── Access denied ──────────────────────────────────────────── */
+    .access-denied {
+      display: none; text-align: center; padding: 60px 24px;
+    }
+    .access-denied-icon { font-size: 48px; margin-bottom: 16px; }
+    .access-denied-title { font-size: 18px; font-weight: 600; color: var(--text-br); margin-bottom: 8px; }
+    .access-denied-sub { font-size: 13px; color: var(--text-dim); }
+
+    /* ── Add email form ─────────────────────────────────────────── */
+    .add-email-row { display: flex; gap: 8px; margin-top: 12px; }
+    .add-email-row input { flex: 1; }
+
+    /* ── Textarea (json export) ─────────────────────────────────── */
+    .export-area {
+      width: 100%; background: var(--bg-2); border: 1px solid var(--border);
+      color: var(--text-dim); border-radius: var(--radius); padding: 10px 12px;
+      font-family: var(--mono); font-size: 10px; resize: vertical;
+      min-height: 120px; box-sizing: border-box; outline: none; line-height: 1.5;
+    }
+
+    /* ── Info pill ──────────────────────────────────────────────── */
+    .info-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+      background: var(--bg-2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 3px 10px;
+    }
+
+    /* Admin link különleges stílus a sidebarban */
+    .sb-item-admin { margin-top: auto; border-top: 1px solid var(--border); }
+
+    /* Test API gomb eredmény */
+    .test-result {
+      font-family: var(--mono); font-size: 11px; padding: 6px 10px;
+      border-radius: var(--radius); margin-top: 8px; display: none;
+    }
+    .test-result.ok  { background: var(--green-soft); color: var(--green); }
+    .test-result.err { background: rgba(224,82,82,.1); color: #e05252; }
+  </style>
+</head>
+<body>
+  <div id="shell"></div>
+
+  <!-- Access denied (nem admin) -->
+  <div class="access-denied" id="access-denied">
+    <div class="access-denied-icon">🔒</div>
+    <div class="access-denied-title">Hozzáférés megtagadva</div>
+    <div class="access-denied-sub">Ez az oldal kizárólag admin felhasználók számára érhető el.</div>
+  </div>
+
+  <!-- Admin tartalom -->
+  <main id="admin-main" class="page" style="display:none;">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Admin</h1>
+        <p class="page-sub">API kulcsok · Meteorológia · Felhasználók · Rendszer
+          <span class="info-pill" style="margin-left:8px;">
+            <span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;"></span>
+            Beállítások böngészőnként tárolódnak (localStorage)
+          </span>
+        </p>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="admin-tabs">
+      <button class="tab-btn active" onclick="switchTab('api')">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2"/><path d="M8 1.5v1M8 13.5v1M1.5 8h1M13.5 8h1"/></svg>
+        API kulcsok
+      </button>
+      <button class="tab-btn" onclick="switchTab('meteo')">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3v1M8 12v1M3 8H2M14 8h-1M11 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/></svg>
+        Meteorológia
+      </button>
+      <button class="tab-btn" onclick="switchTab('users')">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6" cy="5" r="2.5"/><path d="M1 13c0-2.8 2.2-5 5-5h2M12 10v4M10 12h4"/></svg>
+        Felhasználók
+      </button>
+      <button class="tab-btn" onclick="switchTab('system')">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="1" y="3" width="14" height="10" rx="1"/><path d="M5 7h6M5 10h4"/></svg>
+        Rendszer
+      </button>
+    </div>
+
+    <!-- ── Tab: API kulcsok ──────────────────────────────────────── -->
+    <div class="tab-panel active" id="tab-api">
+
+      <!-- Claude API -->
+      <div class="admin-card">
+        <div class="admin-card-head">
+          <span>Claude API (Anthropic)</span>
+          <span class="key-status unset" id="claude-status">Nincs beállítva</span>
+        </div>
+        <div class="admin-card-body">
+          <p class="admin-card-note">
+            A <strong>Forráselemzés</strong> oldalon a tudományos cikkek AI-elemzéséhez szükséges.
+            API kulcsot az <strong>Anthropic Console</strong>-ban hozhatsz létre (console.anthropic.com).
+            A kulcs csak ebben a böngészőben tárolódik.
+          </p>
+          <div class="key-row">
+            <input type="password" class="form-input" id="claude-key-input"
+              placeholder="sk-ant-api03-…"
+              style="flex:1;font-family:var(--mono);font-size:11px;" />
+            <button class="btn btn-primary" onclick="saveKey('notox-claude-key','claude-key-input','claude-status')">Mentés</button>
+            <button class="btn" onclick="clearKey('notox-claude-key','claude-key-input','claude-status')">Törlés</button>
+          </div>
+          <button class="btn btn-sm" onclick="testClaudeKey()">Kapcsolat tesztelése</button>
+          <div class="test-result" id="claude-test-result"></div>
+        </div>
+      </div>
+
+      <!-- Open-Meteo Pro -->
+      <div class="admin-card">
+        <div class="admin-card-head">
+          <span>Open-Meteo API</span>
+          <span class="key-status set" id="openmeteo-status">Ingyenes (kulcs nélkül)</span>
+        </div>
+        <div class="admin-card-body">
+          <p class="admin-card-note">
+            Az Open-Meteo ingyenes tiers-e kulcs nélkül is működik (10 000 hívás/nap).
+            Ha Pro kulcsod van (open-meteo.com/en/pricing), add meg itt — gyorsabb rate limit és magasabb kvóta.
+          </p>
+          <div class="key-row">
+            <input type="password" class="form-input" id="openmeteo-key-input"
+              placeholder="Opcionális Pro API kulcs…"
+              style="flex:1;font-family:var(--mono);font-size:11px;" />
+            <button class="btn btn-primary" onclick="saveKey('notox-openmeteo-key','openmeteo-key-input','openmeteo-status')">Mentés</button>
+            <button class="btn" onclick="clearKey('notox-openmeteo-key','openmeteo-key-input','openmeteo-status')">Törlés</button>
+          </div>
+          <button class="btn btn-sm" onclick="testOpenMeteo()">Kapcsolat tesztelése</button>
+          <div class="test-result" id="openmeteo-test-result"></div>
+        </div>
+      </div>
+
+      <!-- Microsoft Azure AD -->
+      <div class="admin-card">
+        <div class="admin-card-head">
+          <span>Microsoft Azure AD (MSAL)</span>
+          <span class="key-status unset" id="msal-status">Dev mód (localhost)</span>
+        </div>
+        <div class="admin-card-body">
+          <p class="admin-card-note">
+            Az MSAL konfiguráció a <code>js/config.js</code> fájlban van. Az Azure app regisztrációhoz
+            szükséges adatok: <strong>Client ID</strong> és <strong>Tenant ID</strong>.
+          </p>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Client ID (Application ID)</div>
+              <div class="setting-sub">Azure Portal → App registrations → Application (client) ID</div>
+            </div>
+            <div class="setting-control">
+              <input type="text" class="setting-input wide" id="msal-client-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+              <button class="btn btn-sm" onclick="saveMsalConfig()">Mentés</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Tenant ID</div>
+              <div class="setting-sub">Azure Portal → Azure Active Directory → Tenant ID</div>
+            </div>
+            <div class="setting-control">
+              <input type="text" class="setting-input wide" id="msal-tenant-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Redirect URI</div>
+              <div class="setting-sub">Azure Portálon be kell regisztrálni</div>
+            </div>
+            <div class="setting-control">
+              <code style="font-size:11px;color:var(--text-dim)" id="msal-redirect-display"></code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tab-api -->
+
+    <!-- ── Tab: Meteorológia ─────────────────────────────────────── -->
+    <div class="tab-panel" id="tab-meteo">
+
+      <div class="admin-card">
+        <div class="admin-card-head">Időjárás-modell</div>
+        <div class="admin-card-body">
+          <p class="admin-card-note">
+            Az előrejelzési adatforrás meghatározza a meteorológia, dashboard és előrejelzés oldalak adatminőségét.
+            A visszatekintő validáció (ERA5 archívum) nem változik.
+          </p>
+          <div class="setting-row" style="border-bottom:none;">
+            <div>
+              <div class="setting-label">Előrejelzési modell</div>
+              <div class="setting-sub">ECMWF IFS: globális, 0.1° felbontás · ICON-EU: európai, 0.0625°</div>
+            </div>
+            <div class="setting-control">
+              <select class="setting-input" id="s-weather-model">
+                <option value="icon" selected>ICON-EU — európai (ajánlott, 16 nap, 2m RH)</option>
+                <option value="ecmwf">ECMWF IFS — globális (10 nap, 1000hPa RH)</option>
+              </select>
+            </div>
+          </div>
+          <div id="ecmwf-note" style="margin-top:10px;padding:10px 12px;background:rgba(91,156,246,.08);border:1px solid rgba(91,156,246,.2);border-radius:var(--radius);font-size:11px;color:var(--text-muted);line-height:1.6;">
+            <strong style="color:var(--blue);">ECMWF megjegyzés:</strong>
+            Az ECMWF IFS modell óránkénti adatokat közöl — a rendszer automatikusan aggregálja napi T_min/T_max/T_mean/RH_mean/csapadék értékekre.
+            A páratartalom <strong>1000 hPa</strong> nyomásszintről van (2m RH nem elérhető az ECMWF-ben), ami a felszín közelében jó közelítés.
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="admin-card-head">Térkép rácsméret</div>
+        <div class="admin-card-body">
+          <p class="admin-card-note">
+            Az Open-Meteo <strong>pont-alapú API</strong>, de a bulk lekérés egyszerre 100 cellát kér le.
+            Kisebb lépésköz = finomabb térkép, de több kérés és lassabb betöltés.
+            <br>0.75° ≈ 40 cella (1 kérés) · 0.5° ≈ 84 cella (1 kérés) · 0.25° ≈ 336 cella (4 kérés) · <strong>0.1° ≈ 1960 cella (20 kérés, ajánlott)</strong> · 0.0625° ≈ 4928 cella (50 kérés, lassú)
+          </p>
+          <div class="setting-row" style="border-bottom:none;">
+            <div>
+              <div class="setting-label">Rácslépésköz</div>
+              <div class="setting-sub">Fok · ajánlott: 0.1° (~11 km, 20 kérés)</div>
+            </div>
+            <div class="setting-control">
+              <select class="setting-input" id="s-grid-step">
+                <option value="0.75">0.75° — durva (~40 cella, 1 kérés)</option>
+                <option value="0.5">0.5° — közepes (~84 cella, 1 kérés)</option>
+                <option value="0.25" selected>0.25° — finom (~308 cella, 4 kérés, ajánlott API kulcs nélkül)</option>
+                <option value="0.1">0.1° — részletes (~1960 cella, 20 kérés)</option>
+                <option value="0.0625">0.0625° — ICON-EU natív (~4928 cella, 50 kérés, lassú)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="admin-card-head">API sebesség-korlátozás (Rate limiting)</div>
+        <div class="admin-card-body">
+          <p class="admin-card-note">
+            Az Open-Meteo ingyenes tier limit: 10 000 hívás/nap. A meteorológia térkép egyszerre sok
+            állomást kérdez le — a batch-beállítások megakadályozzák a 429-es hibát.
+          </p>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Batch méret</div>
+              <div class="setting-sub">Egyszerre lekérdezett állomások száma</div>
+            </div>
+            <div class="setting-control">
+              <input type="number" class="setting-input" id="s-batch-size" min="1" max="20" />
+              <span style="font-size:11px;color:var(--text-dim)">állomás</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Batch közötti késleltetés</div>
+              <div class="setting-sub">Várakozás két batch között</div>
+            </div>
+            <div class="setting-control">
+              <input type="number" class="setting-input" id="s-batch-delay" min="0" max="5000" step="50" />
+              <span style="font-size:11px;color:var(--text-dim)">ms</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="admin-card-head">Előrejelzés</div>
+        <div class="admin-card-body">
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Előrejelzési napok száma</div>
+              <div class="setting-sub">Open-Meteo free tier: max 16 nap</div>
+            </div>
+            <div class="setting-control">
+              <input type="number" class="setting-input" id="s-forecast-days" min="1" max="16" />
+              <span style="font-size:11px;color:var(--text-dim)">nap</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Visszatekintő napok száma</div>
+              <div class="setting-sub">Historikus adatok az előrejelzés előtt</div>
+            </div>
+            <div class="setting-control">
+              <input type="number" class="setting-input" id="s-history-days" min="1" max="30" />
+              <span style="font-size:11px;color:var(--text-dim)">nap</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="admin-card-head">Alapértelmezett helyszín (térkép középpont)</div>
+        <div class="admin-card-body">
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Szélesség (latitude)</div>
+              <div class="setting-sub">Magyarország közepe: 47.16</div>
+            </div>
+            <div class="setting-control">
+              <input type="number" class="setting-input" id="s-default-lat" step="0.01" min="45" max="49" />
+              <span style="font-size:11px;color:var(--text-dim)">°N</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Hosszúság (longitude)</div>
+              <div class="setting-sub">Magyarország közepe: 19.50</div>
+            </div>
+            <div class="setting-control">
+              <input type="number" class="setting-input" id="s-default-lon" step="0.01" min="16" max="23" />
+              <span style="font-size:11px;color:var(--text-dim)">°E</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Zoom szint</div>
+              <div class="setting-sub">Leaflet zoom (6 = ország, 12 = város)</div>
+            </div>
+            <div class="setting-control">
+              <input type="number" class="setting-input" id="s-default-zoom" min="4" max="18" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-primary" onclick="saveMeteoSettings()">Beállítások mentése</button>
+        <button class="btn" onclick="resetMeteoSettings()">Alapértelmezések visszaállítása</button>
+      </div>
+
+    </div><!-- /tab-meteo -->
+
+    <!-- ── Tab: Felhasználók ─────────────────────────────────────── -->
+    <div class="tab-panel" id="tab-users">
+
+      <!-- Jelenlegi felhasználó -->
+      <div class="admin-card">
+        <div class="admin-card-head">Bejelentkezett felhasználó</div>
+        <div class="admin-card-body" id="current-user-info">
+          <!-- filled by JS -->
+        </div>
+      </div>
+
+      <!-- Admin e-mailek -->
+      <div class="admin-card">
+        <div class="admin-card-head">
+          <span>Admin e-mailek</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="admin-count">0 admin</span>
+        </div>
+        <div class="admin-card-body">
+          <p class="admin-card-note">
+            Az itt felsorolt e-mail-ekhez tartozó felhasználók látják az Admin menüpontot és kezelhetik
+            a beállításokat. Az első belépő automatikusan admin lesz (ha a lista üres).
+          </p>
+          <table class="user-table" id="admin-table">
+            <thead>
+              <tr><th>E-mail</th><th>Státusz</th><th></th></tr>
+            </thead>
+            <tbody id="admin-tbody"></tbody>
+          </table>
+          <div class="add-email-row">
+            <input type="email" class="form-input" id="new-admin-email" placeholder="pelda@szervezet.hu" />
+            <button class="btn btn-primary" onclick="addAdmin()">Admin hozzáadása</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kutató e-mailek -->
+      <div class="admin-card">
+        <div class="admin-card-head">
+          <span>Kutató e-mailek</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="researcher-count">0 kutató</span>
+        </div>
+        <div class="admin-card-body">
+          <p class="admin-card-note">
+            A kutatók hozzáférnek az összes adathoz és a Forráselemzés funkcióhoz, de az Admin
+            beállításokat nem módosíthatják. Az adminok automatikusan kutató jogosultsággal is rendelkeznek.
+          </p>
+          <table class="user-table" id="researcher-table">
+            <thead>
+              <tr><th>E-mail</th><th>Státusz</th><th></th></tr>
+            </thead>
+            <tbody id="researcher-tbody"></tbody>
+          </table>
+          <div class="add-email-row">
+            <input type="email" class="form-input" id="new-researcher-email" placeholder="pelda@szervezet.hu" />
+            <button class="btn btn-primary" onclick="addResearcher()">Kutató hozzáadása</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Belépési napló -->
+      <div class="admin-card">
+        <div class="admin-card-head">
+          <span>Belépési napló</span>
+          <button class="btn btn-sm" onclick="clearUserLog()">Törlés</button>
+        </div>
+        <div class="admin-card-body">
+          <p class="admin-card-note">
+            Az ezen a böngészőn bejelentkezett felhasználók listája (automatikusan gyűjtve).
+          </p>
+          <table class="user-table" id="user-log-table">
+            <thead>
+              <tr><th>Név</th><th>E-mail</th><th>Utolsó belépés</th><th>Szerep</th></tr>
+            </thead>
+            <tbody id="user-log-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /tab-users -->
+
+    <!-- ── Tab: Rendszer ─────────────────────────────────────────── -->
+    <div class="tab-panel" id="tab-system">
+
+      <!-- localStorage áttekintő -->
+      <div class="admin-card">
+        <div class="admin-card-head">
+          <span>localStorage tartalom</span>
+          <span class="info-pill" id="storage-total">0 KB</span>
+        </div>
+        <div class="admin-card-body" id="storage-body">
+          <!-- filled by JS -->
+        </div>
+      </div>
+
+      <!-- Export / import -->
+      <div class="admin-card">
+        <div class="admin-card-head">Beállítások exportálása / importálása</div>
+        <div class="admin-card-body">
+          <p class="admin-card-note">
+            Exportálás: a No-tox összes beállítása (modellek, állomások, validációk, API kulcsok)
+            JSON formátumban — másik böngészőbe importálható.
+          </p>
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            <button class="btn btn-primary" onclick="exportSettings()">Exportálás (JSON letöltése)</button>
+            <button class="btn" onclick="document.getElementById('import-file').click()">Importálás fájlból</button>
+            <input type="file" id="import-file" accept=".json" style="display:none" onchange="importSettings(event)" />
+          </div>
+          <textarea class="export-area" id="export-area" readonly placeholder="Az export JSON itt jelenik meg…"></textarea>
+        </div>
+      </div>
+
+      <!-- Veszélyes műveletek -->
+      <div class="admin-card" style="border-color:rgba(224,82,82,.3);">
+        <div class="admin-card-head" style="color:#e05252;">Adatok törlése</div>
+        <div class="admin-card-body">
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Modellek törlése</div>
+              <div class="setting-sub">Beépített modellek megmaradnak, egyéniek törlődnek</div>
+            </div>
+            <button class="btn btn-sm" onclick="clearKey2('notox-models')">Törlés</button>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Helyszínek törlése</div>
+              <div class="setting-sub">Mentett térképes helyszínek</div>
+            </div>
+            <button class="btn btn-sm" onclick="clearKey2('notox-locations')">Törlés</button>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Validációs adatok törlése</div>
+              <div class="setting-sub">Összes terepi megfigyelés</div>
+            </div>
+            <button class="btn btn-sm" onclick="clearKey2('notox-validation')">Törlés</button>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">Saját meteorológiai állomások törlése</div>
+              <div class="setting-sub">Felhasználó által hozzáadott állomások</div>
+            </div>
+            <button class="btn btn-sm" onclick="clearKey2('notox-stations')">Törlés</button>
+          </div>
+          <div class="setting-row" style="border-bottom:none;">
+            <div>
+              <div class="setting-label" style="color:#e05252;">Teljes No-tox adat törlése</div>
+              <div class="setting-sub">Minden beállítás, modell, helyszín, validáció</div>
+            </div>
+            <button class="btn btn-sm" style="border-color:rgba(224,82,82,.4);color:#e05252;" onclick="clearAll()">Mindent töröl</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tab-system -->
+
+  </main>
+
+  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
+  <script src="/js/config.js"></script>
+  <script src="/js/shell.js"></script>
+  <script>
+    // ── Admin gate ────────────────────────────────────────────────
+
+    window.addEventListener("notox-ready", ({ detail: { account, isAdmin } }) => {
+      if (!isAdmin) {
+        document.getElementById("access-denied").style.display = "block";
+        return;
+      }
+      document.getElementById("admin-main").style.display = "block";
+      initAdmin(account);
+    });
+
+    // ── Init ──────────────────────────────────────────────────────
+
+    function initAdmin(account) {
+      loadApiTab();
+      loadMeteoTab();
+      loadUsersTab(account);
+      loadSystemTab();
+      // ECMWF note toggle on model change
+      document.getElementById("s-weather-model").addEventListener("change", function() {
+        document.getElementById("ecmwf-note").style.display = this.value === "ecmwf" ? "" : "none";
+      });
+    }
+
+    // ── Tabs ──────────────────────────────────────────────────────
+
+    function switchTab(name) {
+      document.querySelectorAll(".tab-btn").forEach((b, i) => {
+        const tabs = ["api", "meteo", "users", "system"];
+        b.classList.toggle("active", tabs[i] === name);
+      });
+      document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+      document.getElementById("tab-" + name).classList.add("active");
+    }
+
+    // ── API kulcsok tab ───────────────────────────────────────────
+
+    function loadApiTab() {
+      updateKeyStatus("notox-claude-key",     "claude-key-input",     "claude-status",     "Beállítva ✓", "Nincs beállítva");
+      updateKeyStatus("notox-openmeteo-key",  "openmeteo-key-input",  "openmeteo-status",  "Pro kulcs beállítva ✓", "Ingyenes (kulcs nélkül)");
+
+      // MSAL config display
+      try {
+        const cfg = JSON.parse(localStorage.getItem("notox-msal-config") || "{}");
+        if (cfg.clientId) document.getElementById("msal-client-id").value = cfg.clientId;
+        if (cfg.tenantId) document.getElementById("msal-tenant-id").value = cfg.tenantId;
+      } catch {}
+      document.getElementById("msal-redirect-display").textContent = window.location.origin + "/login.html";
+      document.getElementById("msal-status").textContent =
+        window.location.hostname === "localhost" ? "Dev mód (localhost)" : "MSAL aktív";
+      document.getElementById("msal-status").className = "key-status " +
+        (window.location.hostname === "localhost" ? "unset" : "set");
+    }
+
+    function updateKeyStatus(storageKey, inputId, statusId, setLabel, unsetLabel) {
+      const val = localStorage.getItem(storageKey);
+      const status = document.getElementById(statusId);
+      if (val) {
+        document.getElementById(inputId).value = val;
+        status.textContent = setLabel;
+        status.className = "key-status set";
+      } else {
+        status.textContent = unsetLabel;
+        status.className = "key-status unset";
+      }
+    }
+
+    function saveKey(storageKey, inputId, statusId) {
+      const val = document.getElementById(inputId).value.trim();
+      if (!val) return;
+      localStorage.setItem(storageKey, val);
+      const status = document.getElementById(statusId);
+      status.textContent = "Beállítva ✓";
+      status.className = "key-status set";
+    }
+
+    function clearKey(storageKey, inputId, statusId) {
+      localStorage.removeItem(storageKey);
+      document.getElementById(inputId).value = "";
+      const status = document.getElementById(statusId);
+      status.textContent = "Nincs beállítva";
+      status.className = "key-status unset";
+    }
+
+    function saveMsalConfig() {
+      const clientId = document.getElementById("msal-client-id").value.trim();
+      const tenantId = document.getElementById("msal-tenant-id").value.trim();
+      if (!clientId || !tenantId) return;
+      localStorage.setItem("notox-msal-config", JSON.stringify({ clientId, tenantId }));
+      alert("MSAL konfiguráció mentve. A módosítás az oldal újratöltése után lép érvénybe.");
+    }
+
+    async function testClaudeKey() {
+      const key = localStorage.getItem("notox-claude-key");
+      const el = document.getElementById("claude-test-result");
+      el.style.display = "block";
+      el.className = "test-result";
+      el.textContent = "Tesztelés…";
+      if (!key) { el.className = "test-result err"; el.textContent = "❌ Nincs API kulcs beállítva."; return; }
+      try {
+        const resp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+            "anthropic-dangerous-direct-browser-calls": "true",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5",
+            max_tokens: 10,
+            messages: [{ role: "user", content: "Hi" }],
+          }),
+        });
+        if (resp.ok) {
+          el.className = "test-result ok";
+          el.textContent = "✓ Kapcsolat sikeres — Claude API elérhető.";
+        } else {
+          const err = await resp.json().catch(() => ({}));
+          el.className = "test-result err";
+          el.textContent = `❌ Hiba ${resp.status}: ${err?.error?.message || resp.statusText}`;
+        }
+      } catch (e) {
+        el.className = "test-result err";
+        el.textContent = `❌ Hálózati hiba: ${e.message}`;
+      }
+    }
+
+    async function testOpenMeteo() {
+      const el = document.getElementById("openmeteo-test-result");
+      el.style.display = "block";
+      el.className = "test-result";
+      el.textContent = "Tesztelés…";
+      try {
+        const key = localStorage.getItem("notox-openmeteo-key");
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=47.5&longitude=19.0&daily=temperature_2m_max&forecast_days=1${key ? "&apikey=" + key : ""}`;
+        const resp = await fetch(url);
+        if (resp.ok) {
+          el.className = "test-result ok";
+          el.textContent = `✓ Open-Meteo elérhető${key ? " (Pro kulccsal)" : " (ingyenes tier)"}.`;
+        } else {
+          el.className = "test-result err";
+          el.textContent = `❌ Hiba ${resp.status}`;
+        }
+      } catch (e) {
+        el.className = "test-result err";
+        el.textContent = `❌ Hálózati hiba: ${e.message}`;
+      }
+    }
+
+    // ── Meteorológia tab ──────────────────────────────────────────
+
+    const METEO_DEFAULTS = {
+      weatherModel: "icon",
+      gridStep:     0.25,
+      batchSize:    6,
+      batchDelay:   250,
+      forecastDays: 7,
+      historyDays:  7,
+      defaultLat:   47.16,
+      defaultLon:   19.50,
+      defaultZoom:  7,
+    };
+
+    function loadMeteoTab() {
+      const s = getMeteoSettings();
+      document.getElementById("s-weather-model").value = s.weatherModel;
+      document.getElementById("s-grid-step").value     = s.gridStep;
+      document.getElementById("s-batch-size").value    = s.batchSize;
+      document.getElementById("s-batch-delay").value   = s.batchDelay;
+      document.getElementById("s-forecast-days").value = s.forecastDays;
+      document.getElementById("s-history-days").value  = s.historyDays;
+      document.getElementById("s-default-lat").value   = s.defaultLat;
+      document.getElementById("s-default-lon").value   = s.defaultLon;
+      document.getElementById("s-default-zoom").value  = s.defaultZoom;
+      // ECMWF info doboz láthatósága
+      document.getElementById("ecmwf-note").style.display = s.weatherModel === "ecmwf" ? "" : "none";
+    }
+
+    function getMeteoSettings() {
+      try {
+        return { ...METEO_DEFAULTS, ...JSON.parse(localStorage.getItem("notox-settings-meteo") || "{}") };
+      } catch { return { ...METEO_DEFAULTS }; }
+    }
+
+    function saveMeteoSettings() {
+      const model = document.getElementById("s-weather-model").value;
+      const s = {
+        weatherModel: model,
+        gridStep:     parseFloat(document.getElementById("s-grid-step").value)   || METEO_DEFAULTS.gridStep,
+        batchSize:    parseInt(document.getElementById("s-batch-size").value)    || METEO_DEFAULTS.batchSize,
+        batchDelay:   parseInt(document.getElementById("s-batch-delay").value)   || METEO_DEFAULTS.batchDelay,
+        forecastDays: parseInt(document.getElementById("s-forecast-days").value) || METEO_DEFAULTS.forecastDays,
+        historyDays:  parseInt(document.getElementById("s-history-days").value)  || METEO_DEFAULTS.historyDays,
+        defaultLat:   parseFloat(document.getElementById("s-default-lat").value) || METEO_DEFAULTS.defaultLat,
+        defaultLon:   parseFloat(document.getElementById("s-default-lon").value) || METEO_DEFAULTS.defaultLon,
+        defaultZoom:  parseInt(document.getElementById("s-default-zoom").value)  || METEO_DEFAULTS.defaultZoom,
+      };
+      localStorage.setItem("notox-settings-meteo", JSON.stringify(s));
+      // ECMWF note láthatósága frissítés
+      document.getElementById("ecmwf-note").style.display = model === "ecmwf" ? "" : "none";
+      const btn = document.querySelector("#tab-meteo .btn-primary");
+      const orig = btn.textContent;
+      btn.textContent = "✓ Mentve";
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    }
+
+    function resetMeteoSettings() {
+      localStorage.removeItem("notox-settings-meteo");
+      loadMeteoTab();
+    }
+
+    // ── Felhasználók tab ──────────────────────────────────────────
+
+    function loadUsersTab(account) {
+      // Jelenlegi felhasználó
+      const isAdm = isAdminUser(account);
+      const isRes = isResearcher(account);
+      const roleClass = isAdm ? "role-admin" : isRes ? "role-researcher" : "role-user";
+      const roleLabel = isAdm ? "Admin" : isRes ? "Kutató" : "Felhasználó";
+      document.getElementById("current-user-info").innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--green-soft);border:1px solid var(--green-line);
+            display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--green);">
+            ${(account.name || account.username || "?").split(/\s+/).map(s=>s[0]).slice(0,2).join("").toUpperCase()}
+          </div>
+          <div>
+            <div style="font-weight:600;font-size:13px;color:var(--text-br);">${account.name || account.username || "—"}</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);">${account.username || ""}</div>
+          </div>
+          <span class="role-badge ${roleClass}">${roleLabel}</span>
+        </div>`;
+
+      renderAdminList();
+      renderResearcherList();
+      renderUserLog();
+    }
+
+    function getAdmins() {
+      try { return JSON.parse(localStorage.getItem("notox-admins") || "[]"); } catch { return []; }
+    }
+
+    function renderAdminList() {
+      const admins = getAdmins();
+      document.getElementById("admin-count").textContent = admins.length + " admin";
+      const currentEmail = (window.__notoxAccount?.username || "").toLowerCase();
+      document.getElementById("admin-tbody").innerHTML = admins.length
+        ? admins.map(email => `
+            <tr>
+              <td style="font-family:var(--mono);font-size:11px;">${email}</td>
+              <td><span class="role-badge role-admin">Admin</span>
+                ${email === currentEmail ? '<span style="font-size:10px;color:var(--text-dim);margin-left:6px;">(te)</span>' : ""}
+              </td>
+              <td>
+                ${email !== currentEmail ? `<button class="btn btn-sm" onclick="removeAdmin('${email}')">Eltávolítás</button>` : ""}
+              </td>
+            </tr>`).join("")
+        : `<tr><td colspan="3" style="font-size:12px;color:var(--text-dim);padding:10px;">Nincs admin (localhost = mindenki admin)</td></tr>`;
+    }
+
+    function addAdmin() {
+      const email = document.getElementById("new-admin-email").value.trim().toLowerCase();
+      if (!email || !email.includes("@")) return;
+      const admins = getAdmins();
+      if (!admins.includes(email)) {
+        admins.push(email);
+        localStorage.setItem("notox-admins", JSON.stringify(admins));
+      }
+      document.getElementById("new-admin-email").value = "";
+      renderAdminList();
+    }
+
+    function removeAdmin(email) {
+      const admins = getAdmins().filter(e => e !== email);
+      localStorage.setItem("notox-admins", JSON.stringify(admins));
+      renderAdminList();
+    }
+
+    // ── Kutatók ───────────────────────────────────────────────────
+
+    function getResearchers() {
+      try { return JSON.parse(localStorage.getItem("notox-researchers") || "[]"); } catch { return []; }
+    }
+
+    function isResearcher(account) {
+      const host = window.location.hostname;
+      if (host === "localhost" || host === "127.0.0.1") return true;
+      if (isAdminUser(account)) return true; // admin = kutató is
+      const researchers = getResearchers();
+      const email = (account?.username || "").toLowerCase();
+      return researchers.includes(email);
+    }
+
+    function renderResearcherList() {
+      const researchers = getResearchers();
+      document.getElementById("researcher-count").textContent = researchers.length + " kutató";
+      const currentEmail = (window.__notoxAccount?.username || "").toLowerCase();
+      document.getElementById("researcher-tbody").innerHTML = researchers.length
+        ? researchers.map(email => `
+            <tr>
+              <td style="font-family:var(--mono);font-size:11px;">${email}</td>
+              <td><span class="role-badge role-researcher">Kutató</span>
+                ${email === currentEmail ? '<span style="font-size:10px;color:var(--text-dim);margin-left:6px;">(te)</span>' : ""}
+              </td>
+              <td>
+                <button class="btn btn-sm" onclick="removeResearcher('${email}')">Eltávolítás</button>
+              </td>
+            </tr>`).join("")
+        : `<tr><td colspan="3" style="font-size:12px;color:var(--text-dim);padding:10px;">Nincs kutató (localhost = mindenki hozzáfér)</td></tr>`;
+    }
+
+    function addResearcher() {
+      const email = document.getElementById("new-researcher-email").value.trim().toLowerCase();
+      if (!email || !email.includes("@")) return;
+      const researchers = getResearchers();
+      if (!researchers.includes(email)) {
+        researchers.push(email);
+        localStorage.setItem("notox-researchers", JSON.stringify(researchers));
+      }
+      document.getElementById("new-researcher-email").value = "";
+      renderResearcherList();
+    }
+
+    function removeResearcher(email) {
+      const researchers = getResearchers().filter(e => e !== email);
+      localStorage.setItem("notox-researchers", JSON.stringify(researchers));
+      renderResearcherList();
+    }
+
+    function renderUserLog() {
+      try {
+        const log = JSON.parse(localStorage.getItem("notox-user-log") || "[]");
+        const admins = getAdmins();
+        const researchers = getResearchers();
+        const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+        document.getElementById("user-log-tbody").innerHTML = log.length
+          ? log.sort((a,b) => b.lastLogin.localeCompare(a.lastLogin)).map(u => {
+              const email = (u.email || "").toLowerCase();
+              const isAdm = isLocalhost || admins.includes(email);
+              const isRes = isLocalhost || isAdm || researchers.includes(email);
+              const roleClass = isAdm ? "role-admin" : isRes ? "role-researcher" : "role-user";
+              const roleLabel = isAdm ? "Admin" : isRes ? "Kutató" : "Felhasználó";
+              const dt = new Date(u.lastLogin);
+              const fmt = dt.toLocaleString("hu-HU", { year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" });
+              return `<tr>
+                <td>${u.name || "—"}</td>
+                <td style="font-family:var(--mono);font-size:11px;">${u.email}</td>
+                <td style="font-family:var(--mono);font-size:11px;color:var(--text-dim);">${fmt}</td>
+                <td><span class="role-badge ${roleClass}">${roleLabel}</span></td>
+              </tr>`;
+            }).join("")
+          : `<tr><td colspan="4" style="font-size:12px;color:var(--text-dim);padding:10px;">Nincs belépési rekord</td></tr>`;
+      } catch {
+        document.getElementById("user-log-tbody").innerHTML = "";
+      }
+    }
+
+    function clearUserLog() {
+      if (!confirm("Töröljük a belépési naplót?")) return;
+      localStorage.removeItem("notox-user-log");
+      renderUserLog();
+    }
+
+    // ── Rendszer tab ──────────────────────────────────────────────
+
+    const NOTOX_KEYS = [
+      "notox-models", "notox-locations", "notox-stations",
+      "notox-diseases", "notox-validation", "notox-claude-key", "notox-openmeteo-key",
+      "notox-admins", "notox-researchers", "notox-user-log", "notox-settings-meteo",
+      "notox-msal-config", "notox-pending-import", "notox-sidebar", "notox-dev-account",
+    ];
+
+    function loadSystemTab() {
+      const rows = NOTOX_KEYS.map(key => {
+        const val = localStorage.getItem(key);
+        const size = val ? new Blob([val]).size : 0;
+        const sizeStr = size > 1024 ? (size / 1024).toFixed(1) + " KB" : size + " B";
+        return `<div class="storage-row">
+          <span class="storage-key">${key}</span>
+          <span style="font-size:11px;color:${val ? "var(--text)" : "var(--text-dim)"};">
+            ${val ? "✓ beállítva" : "—"}
+          </span>
+          <span class="storage-size">${val ? sizeStr : ""}</span>
+        </div>`;
+      }).join("");
+
+      const total = NOTOX_KEYS.reduce((sum, k) => {
+        const v = localStorage.getItem(k); return sum + (v ? new Blob([v]).size : 0);
+      }, 0);
+      document.getElementById("storage-body").innerHTML = rows;
+      document.getElementById("storage-total").textContent =
+        (total / 1024).toFixed(1) + " KB / ~5 MB";
+    }
+
+    function exportSettings() {
+      const data = {};
+      NOTOX_KEYS.forEach(key => {
+        const v = localStorage.getItem(key);
+        if (v) {
+          // Kulcsokat ne exportáljuk alapból
+          if (key === "notox-claude-key" || key === "notox-openmeteo-key") {
+            data[key] = "***REDACTED***";
+          } else {
+            try { data[key] = JSON.parse(v); } catch { data[key] = v; }
+          }
+        }
+      });
+      const json = JSON.stringify(data, null, 2);
+      document.getElementById("export-area").value = json;
+
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `notox-settings-${new Date().toISOString().slice(0,10)}.json`;
+      a.click(); URL.revokeObjectURL(url);
+    }
+
+    function importSettings(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        try {
+          const data = JSON.parse(ev.target.result);
+          const skip = ["notox-claude-key", "notox-openmeteo-key"]; // soha ne írjuk felül importból
+          let count = 0;
+          for (const [key, val] of Object.entries(data)) {
+            if (!NOTOX_KEYS.includes(key) || skip.includes(key)) continue;
+            if (val === "***REDACTED***") continue;
+            localStorage.setItem(key, typeof val === "string" ? val : JSON.stringify(val));
+            count++;
+          }
+          alert(`${count} beállítás importálva. Frissítsd az oldalt a változások érvénybe lépéséhez.`);
+          loadSystemTab();
+        } catch {
+          alert("Hibás JSON fájl.");
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = "";
+    }
+
+    function clearKey2(key) {
+      if (!confirm(`Töröljük a(z) "${key}" kulcsot?`)) return;
+      localStorage.removeItem(key);
+      loadSystemTab();
+    }
+
+    function clearAll() {
+      if (!confirm("FIGYELEM: Ez törli az összes No-tox adatot (modellek, helyszínek, validációk, beállítások). Az API kulcsok megmaradnak. Folytatod?")) return;
+      const keep = ["notox-claude-key", "notox-openmeteo-key", "notox-admins", "notox-sidebar"];
+      NOTOX_KEYS.filter(k => !keep.includes(k)).forEach(k => localStorage.removeItem(k));
+      loadSystemTab();
+    }
+  </script>
+</body>
+</html>

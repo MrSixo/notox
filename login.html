@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>No-tox — Belépés</title>
+  <script src="/js/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    body { display: flex; flex-direction: column; min-height: 100vh; }
+
+    .login-wrap {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      padding: 24px;
+    }
+    .login-card {
+      width: 100%; max-width: 360px;
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 36px 32px;
+    }
+    .login-logo {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 32px;
+    }
+    .login-logo .brand-logo { width: 36px; height: 36px; font-size: 16px; }
+    .login-logo span { font-size: 18px; font-weight: 700; color: var(--text-br); }
+
+    .login-title { font-size: 15px; font-weight: 600; color: var(--text-br); margin: 0 0 6px; }
+    .login-sub   { font-size: 12px; color: var(--text-muted); margin: 0 0 28px; }
+
+    .btn-ms {
+      width: 100%;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      padding: 11px 16px;
+      background: #2f2f2f; border: 1px solid #555; border-radius: var(--radius);
+      color: #fff; font-size: 13px; font-weight: 500; cursor: pointer;
+      transition: background .15s;
+    }
+    .btn-ms:hover { background: #3a3a3a; }
+    .btn-ms:disabled { opacity: .5; cursor: not-allowed; }
+
+    .ms-logo {
+      width: 18px; height: 18px; flex-shrink: 0;
+    }
+
+    .login-err {
+      margin-top: 14px; padding: 10px 12px;
+      background: rgba(224,82,82,.1); border: 1px solid rgba(224,82,82,.25);
+      border-radius: var(--radius); color: var(--red);
+      font-size: 11px; display: none;
+    }
+
+    .login-note {
+      margin-top: 20px; font-size: 11px; color: var(--text-dim); text-align: center;
+    }
+
+    .login-footer {
+      text-align: center; padding: 20px;
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+    }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">
+        <span class="brand-logo">N</span>
+        <span>No-tox</span>
+      </div>
+
+      <h1 class="login-title">Belépés a rendszerbe</h1>
+      <p class="login-sub">Használd a szervezeti vagy személyes Microsoft-fiókodat.</p>
+
+      <button class="btn-ms" id="btn-login">
+        <svg class="ms-logo" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="1"  y="1"  width="9" height="9" fill="#f25022"/>
+          <rect x="11" y="1"  width="9" height="9" fill="#7fba00"/>
+          <rect x="1"  y="11" width="9" height="9" fill="#00a4ef"/>
+          <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+        </svg>
+        Belépés Microsoft-fiókkal
+      </button>
+
+      <div class="login-err" id="login-err"></div>
+
+      <p class="login-note">
+        Szervezeti (Azure AD) és személyes Microsoft-fiókok egyaránt elfogadottak.
+      </p>
+
+      <div id="dev-login-wrap" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+        <button class="btn" id="btn-dev-login" style="width:100%;justify-content:center;color:var(--text-dim);border-color:var(--border);">
+          Fejlesztői belépés (localhost)
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="login-footer">No-tox · Fuzárium-előrejelzés · 2026</div>
+
+  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
+  <script src="/js/config.js"></script>
+  <script>
+    (async function () {
+      // Fejlesztői bypass — csak localhost-on, MSAL init előtt
+      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
+        if (localStorage.getItem("notox-dev-account")) {
+          window.location.replace("/dashboard.html");
+          return;
+        }
+        const wrap = document.getElementById("dev-login-wrap");
+        wrap.style.display = "";
+        document.getElementById("btn-dev-login").addEventListener("click", () => {
+          localStorage.setItem("notox-dev-account", JSON.stringify({ name: "Dev User", username: "dev@localhost" }));
+          window.location.replace("/dashboard.html");
+        });
+      }
+
+      // Ha már be van lépve MSAL-lal → irány az app
+      let app;
+      try {
+        app = new msal.PublicClientApplication({
+          auth: {
+            clientId:    NOTOX_CONFIG.msal.clientId,
+            authority:   NOTOX_CONFIG.msal.authority,
+            redirectUri: NOTOX_CONFIG.msal.redirectUri,
+          },
+          cache: { cacheLocation: "localStorage" },
+        });
+        await app.initialize();
+        try { await app.handleRedirectPromise(); } catch (_) {}
+        const accounts = app.getAllAccounts();
+        if (accounts.length) {
+          window.location.replace("/dashboard.html");
+          return;
+        }
+      } catch (_) {
+        // MSAL init meghiúsult (pl. placeholder clientId) — csak a dev bypass működik
+        return;
+      }
+
+      document.getElementById("btn-login").addEventListener("click", async () => {
+        const btn = document.getElementById("btn-login");
+        btn.disabled = true;
+        btn.textContent = "Belépés folyamatban…";
+        const err = document.getElementById("login-err");
+        err.style.display = "none";
+        try {
+          const result = await app.loginPopup({ scopes: NOTOX_CONFIG.scopes });
+          app.setActiveAccount(result.account);
+          window.location.replace("/dashboard.html");
+        } catch (e) {
+          if (e.errorCode === "popup_window_error" || e.errorCode === "empty_window_error") {
+            await app.loginRedirect({ scopes: NOTOX_CONFIG.scopes });
+            return;
+          }
+          err.textContent = e.message || "Ismeretlen hiba a belépés során.";
+          err.style.display = "";
+          btn.disabled = false;
+          btn.innerHTML = `<svg class="ms-logo" viewBox="0 0 21 21" fill="none">
+            <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+            <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+            <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+            <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+          </svg> Belépés Microsoft-fiókkal`;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
