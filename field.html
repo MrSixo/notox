@@ -639,21 +639,29 @@
     vineyard: "#d4a0c8",
     farmyard: "#d4b896",
   };
-  let _farmlandLoaded = false;
+  let _farmlandGeojson = null; // egyszer töltjük le, mindkét térképhez újra felhasználjuk
 
   async function _loadFarmlandLayer(map) {
-    if (_farmlandLoaded) return;
-    _farmlandLoaded = true;
+    if (map.getSource("farmland")) return; // már be van töltve erre a térképre
     try {
-      const res  = await fetch(FARMLAND_URL);
-      const buf  = await res.arrayBuffer();
-      const ds   = new DecompressionStream("gzip");
-      const blob = new Blob([buf]);
-      const stream = blob.stream().pipeThrough(ds);
-      const text = await new Response(stream).text();
-      const geojson = JSON.parse(text);
+      // GeoJSON letöltése (egyszer, cache-elve)
+      if (!_farmlandGeojson) {
+        const res = await fetch(FARMLAND_URL);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const buf = await res.arrayBuffer();
+        // DecompressionStream (modern böngészők) → fallback: közvetlen JSON
+        let text;
+        if (typeof DecompressionStream !== "undefined") {
+          const ds = new DecompressionStream("gzip");
+          const stream = new Blob([buf]).stream().pipeThrough(ds);
+          text = await new Response(stream).text();
+        } else {
+          text = new TextDecoder().decode(buf); // ha nem gzip (fallback)
+        }
+        _farmlandGeojson = JSON.parse(text);
+      }
 
-      map.addSource("farmland", { type: "geojson", data: geojson, generateId: true });
+      map.addSource("farmland", { type: "geojson", data: _farmlandGeojson, generateId: true });
       map.addLayer({
         id: "farmland-fill", type: "fill", source: "farmland",
         paint: {
@@ -666,11 +674,11 @@
           ],
           "fill-opacity": ["case", ["boolean",["feature-state","hover"],false], 0.7, 0.35],
         },
-      }, "field-fill");  // farmland a mezők alá kerül
+      });
       map.addLayer({
         id: "farmland-line", type: "line", source: "farmland",
         paint: { "line-color": "#888", "line-width": 0.5, "line-opacity": 0.6 },
-      }, "field-fill");
+      });
 
       // Hover kiemelés
       let hoveredId = null;
