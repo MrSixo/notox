@@ -26,8 +26,16 @@ from shapely.validation import make_valid
 
 OVERPASS_URL  = "https://overpass-api.de/api/interpreter"
 SIMPLIFY_TOL  = 0.0002   # fok ≈ 22 m — elegendő mezőgazdasági celláknál
-MIN_AREA_M2   = 2000     # kisebb mint 0.2 ha → kihagyja (zajszűrés)
 DEG_TO_M2     = 111000 * 111000 * 0.7  # kb. 47°N-on
+
+# Minimális terület művelési áganként — elhagyott szőlők/gyümölcsösök epidemiológiailag relevánsak
+MIN_AREA_BY_TYPE = {
+    "farmland": 500,    # 0.05 ha — szántónál csak az apró zajt szűrjük
+    "meadow":   200,    # 0.02 ha
+    "orchard":  0,      # nincs minimum — kis elhagyott gyümölcsös = fertőzésforrás
+    "vineyard": 0,      # nincs minimum — régi szőlők kritikus rezervoárok
+    "farmyard": 100,
+}
 
 LANDUSE_TYPES = {
     "farmland": "Szántó",
@@ -108,9 +116,10 @@ def way_to_feature(way: dict, nodes: dict) -> dict | None:
     if poly.is_empty or not poly.is_valid:
         return None
 
-    # Területszűrés (nagyon kis poligonok kihagyása)
+    # Területszűrés — művelési ágfüggő minimum (szőlő/gyümölcsös: nincs minimum)
     area_m2 = poly.area * DEG_TO_M2
-    if area_m2 < MIN_AREA_M2:
+    min_area = MIN_AREA_BY_TYPE.get(landuse, 200)
+    if min_area > 0 and area_m2 < min_area:
         return None
 
     # Egyszerűsítés
