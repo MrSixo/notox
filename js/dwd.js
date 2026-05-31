@@ -107,6 +107,7 @@ async function getDWDGridData(days = 5, universityZones = [], zoneStep = 0.0625,
         lonMax: Math.round((c.lon + half) * 100000) / 100000,
         centerLat: c.lat,
         centerLon: c.lon,
+        geom:     c.geom || null,  // határmenti cella levágott geometriája
         isZone:   !!zoneName,
         zoneName: zoneName || null,
       },

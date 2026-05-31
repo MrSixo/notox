@@ -462,11 +462,13 @@
           .filter(d => d.tmean !== null || d.rh_mean !== null || d.precip !== null)
           .map(d => ({
             type: "Feature",
-            geometry: { type: "Polygon", coordinates: [[
-              [d.cell.lonMin, d.cell.latMin], [d.cell.lonMax, d.cell.latMin],
-              [d.cell.lonMax, d.cell.latMax], [d.cell.lonMin, d.cell.latMax],
-              [d.cell.lonMin, d.cell.latMin],
-            ]]},
+            geometry: d.cell.geom
+              ? { type: "Polygon", coordinates: [d.cell.geom] }
+              : { type: "Polygon", coordinates: [[
+                  [d.cell.lonMin, d.cell.latMin], [d.cell.lonMax, d.cell.latMin],
+                  [d.cell.lonMax, d.cell.latMax], [d.cell.lonMin, d.cell.latMax],
+                  [d.cell.lonMin, d.cell.latMin],
+                ]]},
             properties: {
               tmean:    d.tmean,    tmin:  d.tmin,  tmax: d.tmax,
               rh_mean:  d.rh_mean,  precip: d.precip,

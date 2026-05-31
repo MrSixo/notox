@@ -23,6 +23,8 @@ Függőségek:
 
 import bz2
 import json
+from shapely.geometry import box as shapely_box, Polygon as ShapelyPoly, mapping as shapely_mapping
+from shapely.validation import make_valid
 import sys
 import tempfile
 import urllib.request
@@ -197,6 +199,9 @@ def build_json(run: str) -> dict:
     # step 024 = run napjának max/min T → run_dt + 0 nap = mai dátum
     days   = [(run_dt + timedelta(days=d)).strftime("%Y-%m-%d") for d in range(5)]
 
+    # Shapely polygon a pontos cellakivágáshoz (OCHA/UNHCR határvonal)
+    hungary_shapely = make_valid(ShapelyPoly([(lo, la) for la, lo in HUNGARY_POLY]))
+
     result = {
         "ts":    datetime.now(timezone.utc).isoformat(),
         "run":   run,
@@ -244,21 +249,34 @@ def build_json(run: str) -> dict:
         lats = ref[lat_dim].values
         lons = ref[lon_dim].values
 
+        half = GRID_STEP / 2
+
         for i, lat in enumerate(lats):
             lat = float(lat)
             for j, lon in enumerate(lons):
                 lon = float(lon)
 
-                # Magyarország + 1 cellás puffer szűrés
-                # Egységes 3 cellás sugár minden irányba (~21 km) — nincs irányvak buffer-hiba
-                BUFFER = 3
-                in_hu = any(
-                    point_in_hungary(lat + di * GRID_STEP, lon + dj * GRID_STEP)
-                    for di in range(-BUFFER, BUFFER + 1)
-                    for dj in range(-BUFFER, BUFFER + 1)
-                )
-                if not in_hu:
+                # Shapely metszet: cella ∩ Magyarország
+                cell_box = shapely_box(lon - half, lat - half, lon + half, lat + half)
+                clipped  = cell_box.intersection(hungary_shapely)
+                if clipped.is_empty:
                     continue
+
+                # Határmenti cella? → tároljuk a levágott geometriát
+                coverage = clipped.area / cell_box.area
+                if coverage >= 0.99:
+                    geom = None          # belső cella: frontend négyzetet rajzol
+                else:
+                    mapped = shapely_mapping(clipped)
+                    gtype  = mapped["type"]
+                    if gtype == "Polygon":
+                        geom = [[round(c[0],5), round(c[1],5)] for c in mapped["coordinates"][0]]
+                    elif gtype == "MultiPolygon":
+                        # legnagyobb rész
+                        largest = max(mapped["coordinates"], key=lambda p: ShapelyPoly(p[0]).area)
+                        geom = [[round(c[0],5), round(c[1],5)] for c in largest[0]]
+                    else:
+                        geom = None
 
                 cell_days = []
                 for d in range(5):
@@ -289,11 +307,14 @@ def build_json(run: str) -> dict:
                         "source":      "icon-eu-dwd",
                     })
 
-                result["grid"].append({
+                entry = {
                     "lat":  round(lat, 5),
                     "lon":  round(lon, 5),
                     "days": cell_days,
-                })
+                }
+                if geom is not None:
+                    entry["geom"] = geom   # csak határmenti celláknál
+                result["grid"].append(entry)
 
     return result
 

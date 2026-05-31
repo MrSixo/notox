@@ -26,7 +26,7 @@ jobs:
       - name: Függőségek telepítése
         run: |
           sudo apt-get install -y libeccodes-dev
-          pip install cfgrib xarray numpy
+          pip install cfgrib xarray numpy shapely
 
       - name: DWD ICON-EU letöltés és feldolgozás
         run: python scripts/fetch_dwd.py
