@@ -105,6 +105,97 @@
         <div class="grid-legend" id="grid-legend"></div>
       </div>
 
+      <!-- ── Értelmezési útmutató ────────────────────────────────────── -->
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-h" style="cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'':'none';this.querySelector('.guide-arrow').style.transform=this.nextElementSibling.style.display===''?'rotate(90deg)':'rotate(0)'">
+          <h3>📖 Hogyan értelmezd az előrejelzést?</h3>
+          <div class="right">
+            <svg class="guide-arrow" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" style="transition:transform .2s;transform:rotate(90deg)"><path d="M6 3l5 5-5 5"/></svg>
+          </div>
+        </div>
+        <div style="padding:16px 20px;display:block;" id="guide-body">
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
+
+            <!-- Adatforrás -->
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">📡 Adatforrás</div>
+              <p style="font-size:12px;color:var(--text-muted);line-height:1.7;margin:0;">
+                A térkép a <strong>DWD (Deutscher Wetterdienst) ICON-EU</strong> numerikus időjárás-modell adatait mutatja.
+                A modell Európa felett <strong>~7 km-es rácsban</strong> fut, naponta 8-szor frissül.
+                Az adatokat a GitHub Actions tölti le 6 óránként és dolgozza fel.
+              </p>
+              <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-dim);">
+                Előrejelzési horizont: <strong>5 nap</strong> · Felbontás: <strong>0.0625° ≈ 7 km</strong>
+              </div>
+            </div>
+
+            <!-- Mit mutat a térkép -->
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">🗓 Mit lát a térképen?</div>
+              <p style="font-size:12px;color:var(--text-muted);line-height:1.7;margin:0 0 6px;">
+                A cellák az <strong>aktuális nap</strong> (mai) értékeit mutatják:
+              </p>
+              <ul style="font-size:12px;color:var(--text-muted);line-height:1.8;margin:0;padding-left:16px;">
+                <li><strong>Hőmérséklet:</strong> (T<sub>max</sub> + T<sub>min</sub>) / 2 — napi átlag °C</li>
+                <li><strong>Páratartalom:</strong> napi átlag RH % (6 óránkénti minták átlaga)</li>
+                <li><strong>Csapadék:</strong> napi összeg mm (00–24h felhalmozva)</li>
+              </ul>
+              <p style="font-size:11px;color:var(--text-dim);margin:6px 0 0;">
+                ℹ️ A cellára mutatva részletes értékek jelennek meg.
+              </p>
+            </div>
+
+            <!-- Hőmérséklet skála -->
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">🌡 Hőmérséklet skála</div>
+              <div style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted);">
+                <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;border-radius:3px;background:#5b9cf6;flex-shrink:0;"></div><span>&lt; 10 °C — hűvös</span></div>
+                <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;border-radius:3px;background:#4caf7d;flex-shrink:0;"></div><span>10–18 °C — enyhe</span></div>
+                <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;border-radius:3px;background:#d4a017;flex-shrink:0;"></div><span>18–24 °C — meleg</span></div>
+                <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;border-radius:3px;background:#dc5a1e;flex-shrink:0;"></div><span>24–30 °C — forró</span></div>
+                <div style="display:flex;align-items:center;gap:8px;"><div style="width:14px;height:14px;border-radius:3px;background:#e05252;flex-shrink:0;"></div><span>&gt; 30 °C — hőhullám</span></div>
+              </div>
+            </div>
+
+            <!-- Páratartalom + csapadék -->
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">💧 Páratartalom &amp; csapadék</div>
+              <div style="font-size:11px;color:var(--text-muted);line-height:1.8;">
+                <strong>Páratartalom:</strong><br>
+                🔴 &lt;55% · 🟡 55–70% · 🟢 70–85% · 🔵 &gt;85%<br><br>
+                <strong>Csapadék:</strong><br>
+                ⬛ 0 mm (száraz) · 🟤 0–1 mm · 🟢 1–5 mm · 🔵 5–15 mm · 🔴 &gt;15 mm<br><br>
+                <span style="color:var(--text-dim);">Növényvédelmi szempontból kritikus: RH &gt; 80% + csapadék = fokozott fertőzési kockázat.</span>
+              </div>
+            </div>
+
+            <!-- Kék keretes zónák -->
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">🟣 Kék keretes zónák</div>
+              <p style="font-size:12px;color:var(--text-muted);line-height:1.7;margin:0;">
+                A lila keretes, sötétebb cellák a <strong>MATE campuszok körüli 7 km-es finomrács</strong> területei
+                (Gödöllő, Keszthely, Kaposvár, Szarvas, Szeged, Gyöngyös).
+                Ezek ugyanolyan DWD adatot mutatnak mint a többi cella —
+                a kiemelés csak az <strong>intézményi érdekeltségű területeket</strong> jelzi.
+              </p>
+            </div>
+
+            <!-- Pontosság, korlátok -->
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">⚠️ Pontosság és korlátok</div>
+              <ul style="font-size:12px;color:var(--text-muted);line-height:1.8;margin:0;padding-left:16px;">
+                <li>A modell <strong>pontszerű előrejelzés</strong> — nem veszi figyelembe a helyi domborzatot, városok hősziget-hatását</li>
+                <li>Az 1–2 napos előrejelzés általában megbízható; <strong>4–5 napon</strong> a hiba nagyobb</li>
+                <li>Csapadék helyét és intenzitását a modellek nehézebben becsülik mint a hőmérsékletet</li>
+                <li>Az adatok <strong>6 óránként frissülnek</strong> — a fejlécben látható frissítés ideje</li>
+              </ul>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-h">
           <h3>Referencia-állomások részletei</h3>
