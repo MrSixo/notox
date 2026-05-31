@@ -595,6 +595,85 @@
     renderFields();
   }
 
+  // ── OSM Farmland réteg ────────────────────────────────────────────────────
+  const FARMLAND_URL = "https://mrsixo.github.io/notox/data/farmland_hungary.geojson.gz";
+  const LU_COLORS = {
+    farmland: "#c8e6a0",
+    meadow:   "#a8d8a8",
+    orchard:  "#f9c784",
+    vineyard: "#d4a0c8",
+    farmyard: "#d4b896",
+  };
+  let _farmlandLoaded = false;
+
+  async function _loadFarmlandLayer(map) {
+    if (_farmlandLoaded) return;
+    _farmlandLoaded = true;
+    try {
+      const res  = await fetch(FARMLAND_URL);
+      const buf  = await res.arrayBuffer();
+      const ds   = new DecompressionStream("gzip");
+      const blob = new Blob([buf]);
+      const stream = blob.stream().pipeThrough(ds);
+      const text = await new Response(stream).text();
+      const geojson = JSON.parse(text);
+
+      map.addSource("farmland", { type: "geojson", data: geojson, generateId: true });
+      map.addLayer({
+        id: "farmland-fill", type: "fill", source: "farmland",
+        paint: {
+          "fill-color": ["match", ["get","lu"],
+            "farmland", LU_COLORS.farmland,
+            "meadow",   LU_COLORS.meadow,
+            "orchard",  LU_COLORS.orchard,
+            "vineyard", LU_COLORS.vineyard,
+            "#d4b896"
+          ],
+          "fill-opacity": ["case", ["boolean",["feature-state","hover"],false], 0.7, 0.35],
+        },
+      }, "field-fill");  // farmland a mezők alá kerül
+      map.addLayer({
+        id: "farmland-line", type: "line", source: "farmland",
+        paint: { "line-color": "#888", "line-width": 0.5, "line-opacity": 0.6 },
+      }, "field-fill");
+
+      // Hover kiemelés
+      let hoveredId = null;
+      map.on("mousemove", "farmland-fill", e => {
+        if (!e.features.length) return;
+        if (hoveredId !== null) map.setFeatureState({source:"farmland",id:hoveredId},{hover:false});
+        hoveredId = e.features[0].id;
+        map.setFeatureState({source:"farmland",id:hoveredId},{hover:true});
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", "farmland-fill", () => {
+        if (hoveredId !== null) map.setFeatureState({source:"farmland",id:hoveredId},{hover:false});
+        hoveredId = null;
+        map.getCanvas().style.cursor = "";
+      });
+
+      // Kattintás → import mint tábla határ
+      map.on("click", "farmland-fill", e => {
+        if (!e.features.length) return;
+        const feat = e.features[0];
+        _applyGisFeature({
+          type: "Feature",
+          geometry: feat.geometry,
+          properties: feat.properties,
+        });
+        const lu = feat.properties.lu;
+        const name = feat.properties.name || "";
+        document.getElementById("f-gis-status").textContent =
+          `✓ OSM ${LU_COLORS[lu] ? lu : "farmland"} ${name ? "— " + name : ""} · ${feat.properties.area_ha ?? "?"} ha`;
+        document.getElementById("f-gis-status").style.color = "var(--green)";
+      });
+
+      console.info(`[farmland] ${geojson.features?.length ?? "?"} terület betöltve`);
+    } catch(e) {
+      console.warn("[farmland] betöltési hiba:", e.message);
+    }
+  }
+
   // ── GIS Import ─────────────────────────────────────────────────────────────
   let _gisMap = null;
   let _gisPolygon = null; // tárolt GeoJSON Feature
@@ -612,9 +691,12 @@
       : "https://tiles.openfreemap.org/styles/dark";
     _gisMap = new maplibregl.Map({ container: "f-map", style, center: [19.5, 47.2], zoom: 7 });
     _gisMap.on("load", () => {
+      // OSM farmland réteg — kattintható szántók/rétek/szőlők
+      _loadFarmlandLayer(_gisMap);
+
       _gisMap.addSource("field-poly", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       _gisMap.addLayer({ id: "field-fill", type: "fill", source: "field-poly",
-        paint: { "fill-color": "#4caf7d", "fill-opacity": 0.3 } });
+        paint: { "fill-color": "#4caf7d", "fill-opacity": 0.55 } });
       _gisMap.addLayer({ id: "field-line", type: "line", source: "field-poly",
         paint: { "line-color": "#4caf7d", "line-width": 2 } });
       if (_gisPolygon) _showGisPolygon(_gisPolygon);

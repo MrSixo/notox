@@ -1,0 +1,37 @@
+name: OSM Farmland frissítés
+
+on:
+  schedule:
+    - cron: "0 2 1 * *"   # havonta egyszer, 1-jén 02:00 UTC
+  workflow_dispatch:       # kézi futtatás
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Függőségek
+        run: pip install requests shapely
+
+      - name: OSM farmland letöltés és feldolgozás
+        run: python scripts/fetch_farmland.py
+
+      - name: Commit és push
+        run: |
+          git config user.name  "OSM Bot"
+          git config user.email "bot@notox.hu"
+          git add data/farmland_hungary.geojson.gz
+          git diff --staged --quiet \
+            && echo "Nincs változás." \
+            || (git commit -m "🌾 OSM farmland $(date -u '+%Y-%m')" && git push)
