@@ -402,20 +402,11 @@
       return document.documentElement.classList.contains("theme-light") ||
              document.body?.classList.contains("theme-light");
     }
-    function cartoTiles() {
-      const base = isLightTheme() ? "light_all" : "dark_all";
-      return [`https://a.basemaps.cartocdn.com/${base}/{z}/{x}/{y}.png`,
-              `https://b.basemaps.cartocdn.com/${base}/{z}/{x}/{y}.png`];
-    }
+    // OpenFreeMap — ingyenes vektor tile stílus, API kulcs nélkül
     function getMapStyle() {
-      return {
-        version: 8,
-        sources: {
-          carto: { type: "raster", tiles: cartoTiles(), tileSize: 256,
-                   attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors © <a href="https://carto.com/attribution" target="_blank">CARTO</a>' }
-        },
-        layers: [{ id: "carto-base", type: "raster", source: "carto" }]
-      };
+      return isLightTheme()
+        ? "https://tiles.openfreemap.org/styles/positron"
+        : "https://tiles.openfreemap.org/styles/dark";
     }
 
     // MapLibre data-driven color expressions — nincs JS-oldalú újrarajzolás rétegváltásnál

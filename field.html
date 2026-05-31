@@ -596,14 +596,10 @@
 
   function _initGisMap() {
     if (_gisMap) return;
-    const style = {
-      version: 8,
-      sources: { carto: { type: "raster", tileSize: 256,
-        tiles: [(_isLightTheme()
-          ? "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
-          : "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png")] } },
-      layers: [{ id: "carto", type: "raster", source: "carto" }],
-    };
+    // OpenFreeMap — ingyenes vektor tile stílus, API kulcs nélkül
+    const style = _isLightTheme()
+      ? "https://tiles.openfreemap.org/styles/positron"
+      : "https://tiles.openfreemap.org/styles/dark";
     _gisMap = new maplibregl.Map({ container: "f-map", style, center: [19.5, 47.2], zoom: 7 });
     _gisMap.on("load", () => {
       _gisMap.addSource("field-poly", { type: "geojson", data: { type: "FeatureCollection", features: [] } });

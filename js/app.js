@@ -116,18 +116,11 @@ function _isLight() {
   return document.documentElement.classList.contains("theme-light") ||
          document.body?.classList.contains("theme-light");
 }
-function _cartoTiles() {
-  const t = _isLight() ? "light_all" : "dark_all";
-  return [`https://a.basemaps.cartocdn.com/${t}/{z}/{x}/{y}.png`,
-          `https://b.basemaps.cartocdn.com/${t}/{z}/{x}/{y}.png`];
-}
+// OpenFreeMap — ingyenes vektor tile stílus, API kulcs nélkül
 function _mapStyle() {
-  return {
-    version: 8,
-    sources: { carto: { type: "raster", tiles: _cartoTiles(), tileSize: 256,
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attribution">CARTO</a>' } },
-    layers:  [{ id: "carto-base", type: "raster", source: "carto" }],
-  };
+  return _isLight()
+    ? "https://tiles.openfreemap.org/styles/positron"
+    : "https://tiles.openfreemap.org/styles/dark";
 }
 
 function initMap() {
