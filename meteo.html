@@ -648,18 +648,15 @@
         const dwdOk = await isDWDAvailable().catch(() => false);
 
         if (dwdOk) {
-          // ── DWD ICON-EU 7 km — teljes rács 0.0625°-on ───────────────────
+          // ── DWD ICON-EU 7 km — rácsot a JSON-ból vesszük, nem generáljuk ─
           document.getElementById("sub-model").textContent = "DWD ICON-EU · 7 km";
           document.getElementById("refresh-lbl").textContent = "DWD ICON-EU betöltés…";
 
-          const cells7km    = buildGrid(0.0625);
-          const cellLocs7km = cells7km.map(c => ({ lat: c.centerLat, lon: c.centerLon }));
-
-          const [cellSeries, stationSeries] = await Promise.all([
-            fetchWeatherBulkDWD(cellLocs7km, 5),
+          const [dwdGrid, stationSeries] = await Promise.all([
+            getDWDGridData(5, UNIVERSITY_ZONES, ZONE_STEP, ZONE_RADIUS),
             fetchWeatherBulkDWD(stationLocs, 5),
           ]);
-          gridData    = cells7km.map((cell, i) => ({ cell, ...pickToday(cellSeries[i]) }));
+          gridData    = dwdGrid;
           stationData = STATIONS.map((st, i) => ({ station: st, ...pickToday(stationSeries[i]) }));
 
         } else {

@@ -71,7 +71,56 @@ async function fetchWeatherBulkDWD(locations, days = 5) {
 }
 
 /**
- * Ellenőrzi, hogy a DWD JSON elérhető és friss-e (max 7 óra régi).
+ * DWD rácscellák közvetlenül a JSON-ból — nincs nearest-neighbor keresés.
+ * Visszatér a meteo.html gridData[] formátumban.
+ * @param {number} days — max 5
+ * @param {Array}  universityZones — [{name, lat, lon}] a zónajelöléshez (opcionális)
+ * @param {number} zoneStep  — 0.0625
+ * @param {number} zoneRadius — 2
+ * @returns {Promise<Array>}
+ */
+async function getDWDGridData(days = 5, universityZones = [], zoneStep = 0.0625, zoneRadius = 2) {
+  const data = await _loadDWD();
+  const step = data.step || 0.0625;
+  const half = step / 2;
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Zóna-lookup: O(1) cella-szintű ellenőrzéshez
+  const zoneR = zoneRadius * zoneStep;
+  function isInZone(lat, lon) {
+    for (const z of universityZones) {
+      if (Math.abs(z.lat - lat) <= zoneR + half &&
+          Math.abs(z.lon - lon) <= zoneR + half) return z.name;
+    }
+    return null;
+  }
+
+  return data.grid.map(c => {
+    const dayData = c.days.slice(0, days);
+    const row = dayData.find(d => d.date === today) || dayData[0] || {};
+    const zoneName = isInZone(c.lat, c.lon);
+    return {
+      cell: {
+        latMin: Math.round((c.lat - half) * 100000) / 100000,
+        latMax: Math.round((c.lat + half) * 100000) / 100000,
+        lonMin: Math.round((c.lon - half) * 100000) / 100000,
+        lonMax: Math.round((c.lon + half) * 100000) / 100000,
+        centerLat: c.lat,
+        centerLon: c.lon,
+        isZone:   !!zoneName,
+        zoneName: zoneName || null,
+      },
+      tmean:   row.tmean   ?? null,
+      tmin:    row.tmin    ?? null,
+      tmax:    row.tmax    ?? null,
+      rh_mean: row.rh_mean ?? null,
+      precip:  row.precip  ?? null,
+    };
+  });
+}
+
+/**
+ * Ellenőrzi, hogy a DWD JSON elérhető és friss-e (max 13 óra régi).
  * @returns {Promise<boolean>}
  */
 async function isDWDAvailable() {
