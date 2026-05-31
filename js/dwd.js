@@ -77,14 +77,11 @@ async function fetchWeatherBulkDWD(locations, days = 5) {
 async function isDWDAvailable() {
   try {
     const data = await _loadDWD();
-    const runDt = new Date(
-      data.run.slice(0, 4)  + "-" +
-      data.run.slice(4, 6)  + "-" +
-      data.run.slice(6, 8)  + "T" +
-      data.run.slice(8, 10) + ":00:00Z"
-    );
-    const ageHours = (Date.now() - runDt.getTime()) / 3600000;
-    return ageHours < 7;
+    // ts = a JSON tényleges letöltési ideje (nem a modell futási ideje)
+    // A GitHub Actions 6h-ként frissít → max 13h-s adatot fogadunk el
+    const fetchedAt = new Date(data.ts);
+    const ageHours  = (Date.now() - fetchedAt.getTime()) / 3600000;
+    return ageHours < 13;
   } catch {
     return false;
   }
