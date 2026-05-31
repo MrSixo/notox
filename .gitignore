@@ -1,0 +1,13 @@
+# Next.js build cache
+.next/
+node_modules/
+
+# Claude
+.claude/
+
+# OS
+.DS_Store
+
+# Temp
+*.tmp
+*.log
