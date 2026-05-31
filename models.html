@@ -97,7 +97,7 @@
       <div class="page-head">
         <div>
           <h1>Modellek</h1>
-          <div class="sub">Irodalmi matematikai modellek könyvtára · saját modellek hozzáadhatók</div>
+          <div class="sub">Betegségmodellek könyvtára · irodalmi és egyéni modellek</div>
         </div>
         <div class="right">
           <button class="btn btn-primary" id="btn-add-model">
@@ -110,6 +110,17 @@
       <!-- Add form -->
       <div class="add-model-form" id="add-model-form">
         <div style="font-size:13px;font-weight:600;color:var(--text-br);margin-bottom:16px;" id="form-title">Új modell</div>
+        <div class="form-grid-2" style="margin-bottom:12px;">
+          <div class="field"><label>Latin / tudományos neve</label><input id="m-latin" type="text" placeholder="pl. Fusarium graminearum" style="width:100%;"></div>
+          <div class="field"><label>Kategória</label>
+            <select id="m-category" style="width:100%;">
+              <option value="Gomba">Gomba</option>
+              <option value="Baktérium">Baktérium</option>
+              <option value="Vírus">Vírus</option>
+              <option value="Egyéb">Egyéb</option>
+            </select>
+          </div>
+        </div>
         <div class="form-grid-2" style="margin-bottom:12px;">
           <div class="field"><label>Modell neve</label><input id="m-name" type="text" placeholder="pl. Stripe rust logistic" style="width:100%;"></div>
           <div class="field"><label>Szerzők</label><input id="m-authors" type="text" placeholder="pl. Coakley et al." style="width:100%;"></div>
@@ -126,7 +137,7 @@
             </select>
           </div>
         </div>
-        <div class="field" style="margin-bottom:12px;"><label>Leírás / Megjegyzés</label><input id="m-desc" type="text" placeholder="Rövid leírás az alkalmazási feltételekről…" style="width:100%;"></div>
+        <div class="field" style="margin-bottom:12px;"><label>Biológiai leírás / megjegyzés</label><input id="m-desc" type="text" placeholder="Rövid leírás az alkalmazási feltételekről…" style="width:100%;"></div>
         <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Modell paraméterei</div>
 
         <!-- Gauss / logistic params -->
@@ -328,6 +339,7 @@
           <div style="display:flex;justify-content:space-between;align-items:flex-start;">
             <div>
               <h2>${m.name}</h2>
+              ${m.latin ? `<div style="font-style:italic;font-size:12px;color:var(--text-muted);margin-bottom:3px;">${m.latin}${m.category ? ` · <span style="font-style:normal;font-family:var(--mono);font-size:10px;background:var(--bg-2);padding:1px 5px;border-radius:3px;border:1px solid var(--border);">${m.category}</span>` : ""}</div>` : (m.category ? `<div style="margin-bottom:3px;"><span style="font-family:var(--mono);font-size:10px;background:var(--bg-2);padding:1px 5px;border-radius:3px;border:1px solid var(--border);">${m.category}</span></div>` : "")}
               <div class="model-authors">${m.authors} · ${m.year}
                 ${m.doi ? `· <a class="ref-link" href="https://doi.org/${m.doi}" target="_blank">${m.doi}</a>` : ""}
               </div>
@@ -388,6 +400,8 @@
       const variantName = `${baseName} — ${existing + 1}. variáns`;
 
       document.getElementById("form-title").textContent = `Variáns: ${baseName}`;
+      document.getElementById("m-latin").value    = m.latin || "";
+      document.getElementById("m-category").value = m.category || "Gomba";
       document.getElementById("m-name").value    = variantName;
       document.getElementById("m-authors").value = m.authors;
       document.getElementById("m-year").value    = m.year;
@@ -420,6 +434,8 @@
       if (!m) return;
       editingId = id;
       document.getElementById("form-title").textContent = `Szerkesztés: ${m.name}`;
+      document.getElementById("m-latin").value    = m.latin || "";
+      document.getElementById("m-category").value = m.category || "Gomba";
       document.getElementById("m-name").value    = m.name;
       document.getElementById("m-authors").value = m.authors;
       document.getElementById("m-year").value    = m.year;
@@ -503,6 +519,8 @@
         const idx = custom.findIndex(m => m.id === editingId);
         if (idx !== -1) {
           custom[idx] = { ...custom[idx], name,
+            latin:    document.getElementById("m-latin").value.trim(),
+            category: document.getElementById("m-category").value,
             authors: document.getElementById("m-authors").value.trim() || "Ismeretlen",
             year:    parseInt(document.getElementById("m-year").value) || new Date().getFullYear(),
             disease: document.getElementById("m-disease").value.trim() || "—",
@@ -521,6 +539,8 @@
         // Új modell
         const m = {
           id: genId(), name,
+          latin:    document.getElementById("m-latin").value.trim(),
+          category: document.getElementById("m-category").value,
           authors: document.getElementById("m-authors").value.trim() || "Ismeretlen",
           year:    parseInt(document.getElementById("m-year").value) || new Date().getFullYear(),
           disease: document.getElementById("m-disease").value.trim() || "—",
@@ -548,6 +568,11 @@
         const p = JSON.parse(pendingRaw);
         // Prefill form fields
         const set = (id, val) => { if (val != null && val !== '') document.getElementById(id).value = val; };
+        set('m-latin',    p.latin);
+        if (p.category) {
+          const sel = document.getElementById('m-category');
+          if ([...sel.options].some(o => o.value === p.category)) sel.value = p.category;
+        }
         set('m-name',    p.name);
         set('m-authors', p.authors);
         set('m-year',    p.year);

@@ -125,8 +125,7 @@ function logUserLogin(account) {
 const NAV_ITEMS = [
   { href: "/dashboard.html", label: "Dashboard",    icon: "dashboard", match: ["/dashboard.html", "/index.html", "/"] },
   { href: "/meteo.html",     label: "Meteorológia", icon: "meteo",     match: ["/meteo.html"] },
-  { href: "/diseases.html",  label: "Betegségek",   icon: "disease",   match: ["/diseases.html"] },
-  { href: "/models.html",    label: "Modellek",     icon: "model",     match: ["/models.html"] },
+  { href: "/models.html",    label: "Modellek",     icon: "model",     match: ["/models.html", "/diseases.html"] },
   { href: "/forecast.html",    label: "Előrejelzés",  icon: "chart",     match: ["/forecast.html"] },
   { href: "/field.html",      label: "Táblaelemző",  icon: "field",     match: ["/field.html"] },
   { href: "/validation.html", label: "Validáció",    icon: "validate",  match: ["/validation.html"] },
