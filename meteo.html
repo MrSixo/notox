@@ -134,15 +134,16 @@
             <div>
               <div style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">🗓 Mit lát a térképen?</div>
               <p style="font-size:12px;color:var(--text-muted);line-height:1.7;margin:0 0 6px;">
-                A cellák az <strong>aktuális nap</strong> (mai) értékeit mutatják:
+                A cellák a <strong>mai teljes napra szóló előrejelzést</strong> mutatják — nem pillanatnyi értéket:
               </p>
               <ul style="font-size:12px;color:var(--text-muted);line-height:1.8;margin:0;padding-left:16px;">
-                <li><strong>Hőmérséklet:</strong> (T<sub>max</sub> + T<sub>min</sub>) / 2 — napi átlag °C</li>
-                <li><strong>Páratartalom:</strong> napi átlag RH % (6 óránkénti minták átlaga)</li>
-                <li><strong>Csapadék:</strong> napi összeg mm (00–24h felhalmozva)</li>
+                <li><strong>Hőmérséklet:</strong> (T<sub>max</sub> + T<sub>min</sub>) / 2 — a nap végére várható min/max átlaga</li>
+                <li><strong>Páratartalom:</strong> 6 óránkénti minták napi átlaga (00–24h)</li>
+                <li><strong>Csapadék:</strong> teljes napi összeg mm (00:00–24:00 UTC)</li>
               </ul>
               <p style="font-size:11px;color:var(--text-dim);margin:6px 0 0;">
-                ℹ️ A cellára mutatva részletes értékek jelennek meg.
+                ⚠️ Reggel a T<sub>max</sub> még nem következett be — a modell a nap végi maximumot vetíti előre.<br>
+                Az adat kb. 3–6 óránként frissül a legújabb DWD modell-futásból.
               </p>
             </div>
 
