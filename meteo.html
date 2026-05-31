@@ -218,8 +218,8 @@
       try { return parseFloat(JSON.parse(localStorage.getItem("notox-settings-meteo") || "{}").gridStep) || 0.25; }
       catch { return 0.25; }
     }
-    function buildGrid() {
-      const COARSE = getGridStep();
+    function buildGrid(coarseStep) {
+      const COARSE = coarseStep ?? getGridStep();
       const LAT0 = 45.75, LAT1 = 48.55;
       const LON0 = 16.0,  LON1 = 23.0;
       const r = v => Math.round(v * 100000) / 100000;
@@ -554,6 +554,7 @@
         if (cached) {
           gridData    = cached.gridData;
           stationData = cached.stationData;
+          if (cached.model) document.getElementById("sub-model").textContent = cached.model;
           drawGrid();
           updateTable();
           updateKPIs();
@@ -573,15 +574,18 @@
         const dwdOk = await isDWDAvailable().catch(() => false);
 
         if (dwdOk) {
-          // ── DWD ICON-EU 7 km (GitHub Pages statikus JSON) ───────────────
+          // ── DWD ICON-EU 7 km — teljes rács 0.0625°-on ───────────────────
           document.getElementById("sub-model").textContent = "DWD ICON-EU · 7 km";
           document.getElementById("refresh-lbl").textContent = "DWD ICON-EU betöltés…";
 
+          const cells7km    = buildGrid(0.0625);
+          const cellLocs7km = cells7km.map(c => ({ lat: c.centerLat, lon: c.centerLon }));
+
           const [cellSeries, stationSeries] = await Promise.all([
-            fetchWeatherBulkDWD(cellLocs, 5),
+            fetchWeatherBulkDWD(cellLocs7km, 5),
             fetchWeatherBulkDWD(stationLocs, 5),
           ]);
-          gridData    = cells.map((cell, i) => ({ cell, ...pickToday(cellSeries[i]) }));
+          gridData    = cells7km.map((cell, i) => ({ cell, ...pickToday(cellSeries[i]) }));
           stationData = STATIONS.map((st, i) => ({ station: st, ...pickToday(stationSeries[i]) }));
 
         } else {
@@ -606,7 +610,8 @@
           });
         }
 
-        saveCache({ gridData, stationData, ts: Date.now() });
+        const modelLabel = document.getElementById("sub-model").textContent;
+        saveCache({ gridData, stationData, model: modelLabel, ts: Date.now() });
         drawGrid();
         updateTable();
         updateKPIs();
@@ -630,8 +635,10 @@
       document.getElementById("kpi-temp").textContent     = temps.length ? avg(temps).toFixed(1) : "—";
       const zoneCells   = gridData.filter(d => d.cell.isZone).length;
       const coarseCells = gridData.filter(d => !d.cell.isZone).length;
-      document.getElementById("kpi-temp-lbl").textContent =
-        `${zoneCells} zóna (7km) + ${coarseCells} alap (${getGridStep()}°) cella`;
+      const stepLabel = gridData.some(d => d.cell.isZone)
+        ? `${zoneCells} zóna + ${coarseCells} alap`
+        : `${gridData.length} cella · 7 km`;
+      document.getElementById("kpi-temp-lbl").textContent = stepLabel;
       document.getElementById("kpi-rh").textContent       = rhs.length ? Math.round(avg(rhs)) : "—";
       const maxP = precips.length ? Math.max(...precips) : null;
       document.getElementById("kpi-precip").textContent   = maxP !== null ? maxP.toFixed(1) : "—";

@@ -17,7 +17,7 @@
         <div>
           <h1>Fuzárium-kockázat előrejelzés</h1>
           <div class="sub" id="sub-line">
-            Válassz helyszínt és kattints a Futtatásra · Open-Meteo ICON-EU · De Wolf et al. 2003
+            Válassz helyszínt és kattints a Futtatásra · <span id="sub-source">DWD ICON-EU · 7 km</span> · De Wolf et al. 2003
           </div>
         </div>
         <div class="right">
@@ -33,12 +33,17 @@
             <label>Helyszín</label>
             <select id="sel-location" style="min-width:200px;">
               <option value="47.4979,19.0402">Budapest</option>
-              <option value="47.5317,21.6273">Debrecen</option>
-              <option value="46.4167,20.3333">Hódmezővásárhely</option>
-              <option value="47.1860,18.4131">Székesfehérvár</option>
-              <option value="46.0727,18.2323">Pécs</option>
-              <option value="47.6875,17.6504">Győr</option>
-              <option value="46.3667,17.7967">Kaposvár</option>
+              <option value="47.5977,19.3631">Gödöllő (MATE)</option>
+              <option value="47.7864,19.9309">Gyöngyös (MATE)</option>
+              <option value="47.3920,18.9167">Érd</option>
+              <option value="47.1703,19.7997">Cegléd</option>
+              <option value="46.9061,19.6913">Kecskemét</option>
+              <option value="47.3192,20.9253">Karcag</option>
+              <option value="46.8630,20.5420">Szarvas</option>
+              <option value="46.2530,20.1480">Szeged</option>
+              <option value="46.7660,17.2469">Keszthely (MATE)</option>
+              <option value="46.7989,17.5107">Badacsonytomaj</option>
+              <option value="46.3667,17.7967">Kaposvár (MATE)</option>
               <option value="custom">Egyedi koordináta…</option>
             </select>
           </div>
@@ -55,9 +60,9 @@
           <div class="field">
             <label>Előrejelzés</label>
             <select id="sel-days">
-              <option value="7">7 nap</option>
-              <option value="10">10 nap</option>
-              <option value="14" selected>14 nap</option>
+              <option value="5" selected>5 nap (DWD)</option>
+              <option value="10">10 nap (Open-Meteo)</option>
+              <option value="14">14 nap (Open-Meteo)</option>
             </select>
           </div>
           <div style="margin-left:auto;display:flex;align-items:flex-end;">
@@ -157,6 +162,7 @@
   <script src="/js/config.js"></script>
   <script src="/js/shell.js"></script>
   <script src="/js/openmeteo.js"></script>
+  <script src="/js/dwd.js"></script>
   <script src="/js/fusarium.js"></script>
   <script src="/js/app.js"></script>
 </body>

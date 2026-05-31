@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>No-tox — Táblaelemző</title>
+  <script src="/js/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .field-card {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color .15s;
+      position: relative;
+    }
+    .field-card:hover { border-color: var(--green-line); }
+    .field-card .fc-name {
+      font-size: 14px; font-weight: 700; color: var(--text-br);
+      margin-bottom: 4px;
+    }
+    .field-card .fc-meta {
+      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+    .field-card .fc-tags {
+      display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px;
+    }
+    .tag {
+      font-size: 10px; font-family: var(--mono);
+      padding: 2px 7px; border-radius: 10px;
+      background: var(--bg-3); color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .tag.warn { background: rgba(212,160,23,.12); color: #d4a017; border-color: rgba(212,160,23,.3); }
+    .tag.danger { background: rgba(224,82,82,.12); color: #e05252; border-color: rgba(224,82,82,.3); }
+    .tag.ok    { background: rgba(76,175,125,.12); color: #4caf7d; border-color: rgba(76,175,125,.3); }
+    .field-card .fc-risk {
+      display: flex; align-items: center; gap: 10px; margin-top: 8px;
+    }
+    .risk-bar-sm { flex: 1; height: 5px; background: var(--bg-3); border-radius: 3px; overflow: hidden; }
+    .risk-bar-sm-fill { height: 100%; border-radius: 3px; transition: width .4s; }
+    .field-add-card {
+      border: 1.5px dashed var(--border);
+      border-radius: var(--radius-lg);
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 8px;
+      padding: 32px 16px;
+      color: var(--text-dim); cursor: pointer;
+      transition: border-color .15s, color .15s;
+      min-height: 140px;
+    }
+    .field-add-card:hover { border-color: var(--green-line); color: var(--green); }
+    .fc-del {
+      position: absolute; top: 10px; right: 10px;
+      background: none; border: none; cursor: pointer;
+      color: var(--text-dim); padding: 4px; border-radius: 4px;
+    }
+    .fc-del:hover { color: #e05252; background: rgba(224,82,82,.1); }
+
+    /* Form */
+    .field-form { background: var(--bg-1); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 20px; margin-bottom: 20px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+    .disease-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .disease-cb { display: flex; align-items: center; gap: 5px;
+      font-size: 11px; color: var(--text-muted); cursor: pointer;
+      padding: 4px 10px; border-radius: 14px;
+      background: var(--bg-2); border: 1px solid var(--border);
+      transition: border-color .12s; }
+    .disease-cb:hover { border-color: var(--green-line); }
+    .disease-cb input { accent-color: var(--green); }
+
+    /* Detail panel */
+    .detail-panel { background: var(--bg-1); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 20px; margin-bottom: 20px; }
+    .detail-panel h3 { font-size: 14px; font-weight: 700; color: var(--text-br); margin: 0 0 14px; }
+    .model-result { margin-bottom: 14px; }
+    .model-result .mr-label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+    .risk-bar-lg { height: 8px; background: var(--bg-3); border-radius: 4px; overflow: hidden; }
+    .risk-bar-lg-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+
+    .risk-score { font-family: var(--mono); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main class="page-wrap">
+    <div class="page">
+
+      <div class="page-head">
+        <div>
+          <h1>Táblaelemző</h1>
+          <div class="sub">Tábla-szintű kockázatbecslés · talaj- és növényminta adatokkal kiegészítve</div>
+        </div>
+        <div class="right">
+          <div class="spinner" id="spinner" style="display:none;"></div>
+          <button class="btn btn-primary" id="btn-add">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
+            Tábla hozzáadása
+          </button>
+        </div>
+      </div>
+
+      <!-- Form -->
+      <div id="field-form-wrap" style="display:none;">
+        <div class="field-form">
+          <div style="font-size:13px;font-weight:700;color:var(--text-br);margin-bottom:16px;" id="form-title">Új tábla</div>
+          <div class="form-grid" style="margin-bottom:14px;">
+            <div class="field">
+              <label>Tábla neve</label>
+              <input id="f-name" type="text" placeholder="pl. Északi búzatábla" style="width:100%;" />
+            </div>
+            <div class="field">
+              <label>Jelenlegi kultúra</label>
+              <select id="f-crop" style="width:100%;">
+                <option value="wheat">Búza</option>
+                <option value="corn">Kukorica</option>
+                <option value="sunflower">Napraforgó</option>
+                <option value="rape">Repce</option>
+                <option value="barley">Árpa</option>
+                <option value="rye">Rozs</option>
+                <option value="sugarbeet">Cukorrépa</option>
+                <option value="potato">Burgonya</option>
+                <option value="soy">Szójabab</option>
+                <option value="other">Egyéb</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Szélesség (lat)</label>
+              <input id="f-lat" type="number" step="0.0001" placeholder="47.5977" style="width:100%;" />
+            </div>
+            <div class="field">
+              <label>Hosszúság (lon)</label>
+              <input id="f-lon" type="number" step="0.0001" placeholder="19.3631" style="width:100%;" />
+            </div>
+            <div class="field">
+              <label>Előveteménny</label>
+              <select id="f-prev-crop" style="width:100%;">
+                <option value="unknown">Ismeretlen / nincs adat</option>
+                <option value="wheat">Búza</option>
+                <option value="corn">Kukorica</option>
+                <option value="sunflower">Napraforgó</option>
+                <option value="rape">Repce</option>
+                <option value="barley">Árpa</option>
+                <option value="rye">Rozs</option>
+                <option value="sugarbeet">Cukorrépa</option>
+                <option value="potato">Burgonya</option>
+                <option value="soy">Szójabab</option>
+                <option value="other">Egyéb</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Megjegyzés</label>
+              <input id="f-notes" type="text" placeholder="pl. vizes fekvésű, mélyedés..." style="width:100%;" />
+            </div>
+          </div>
+
+          <!-- Soil diseases -->
+          <div style="margin-bottom:14px;">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">
+              Talajmintavételezés — azonosított betegségek / kórokozók
+            </div>
+            <div class="disease-grid" id="soil-diseases">
+              <label class="disease-cb"><input type="checkbox" value="fusarium_soil" /> Fusarium spp.</label>
+              <label class="disease-cb"><input type="checkbox" value="rhizoctonia" /> Rhizoctonia solani</label>
+              <label class="disease-cb"><input type="checkbox" value="sclerotinia" /> Sclerotinia sclerotiorum</label>
+              <label class="disease-cb"><input type="checkbox" value="pythium" /> Pythium spp.</label>
+              <label class="disease-cb"><input type="checkbox" value="botrytis_soil" /> Botrytis cinerea</label>
+              <label class="disease-cb"><input type="checkbox" value="gaeumannomyces" /> Gaeumannomyces graminis</label>
+              <label class="disease-cb"><input type="checkbox" value="helminth_soil" /> Helminthosporium spp.</label>
+              <label class="disease-cb"><input type="checkbox" value="verticillium" /> Verticillium spp.</label>
+            </div>
+          </div>
+
+          <!-- Plant diseases -->
+          <div style="margin-bottom:18px;">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">
+              Növényminta elemzés — azonosított betegségek
+            </div>
+            <div class="disease-grid" id="plant-diseases">
+              <label class="disease-cb"><input type="checkbox" value="fusarium_plant" /> Fuzárium (kalász)</label>
+              <label class="disease-cb"><input type="checkbox" value="stripe_rust" /> Sárgarozsda</label>
+              <label class="disease-cb"><input type="checkbox" value="leaf_rust" /> Levélrozsda</label>
+              <label class="disease-cb"><input type="checkbox" value="powdery_mildew" /> Lisztharmat</label>
+              <label class="disease-cb"><input type="checkbox" value="septoria" /> Szeptória</label>
+              <label class="disease-cb"><input type="checkbox" value="helminth_plant" /> Helmintospórium</label>
+              <label class="disease-cb"><input type="checkbox" value="botrytis_plant" /> Botrytis (szürkepenész)</label>
+              <label class="disease-cb"><input type="checkbox" value="alternaria" /> Alternaria spp.</label>
+              <label class="disease-cb"><input type="checkbox" value="downy_mildew" /> Peronoszpóra</label>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary" id="btn-save-field">Mentés</button>
+            <button class="btn" id="btn-cancel-field">Mégse</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detail panel -->
+      <div id="detail-wrap" style="display:none;">
+        <div class="detail-panel">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+            <div>
+              <h3 id="detail-name" style="margin:0 0 4px;"></h3>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);" id="detail-meta"></div>
+            </div>
+            <button class="btn" id="btn-close-detail">Bezárás</button>
+          </div>
+          <div class="stats" style="margin-bottom:16px;" id="detail-kpis"></div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">
+            Modell eredmények — mai kockázat
+          </div>
+          <div id="detail-models"></div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:12px;" id="detail-source"></div>
+        </div>
+      </div>
+
+      <!-- Field grid -->
+      <div id="field-grid" class="field-grid"></div>
+
+    </div>
+  </main>
+
+  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
+  <script src="/js/config.js"></script>
+  <script src="/js/shell.js"></script>
+  <script src="/js/openmeteo.js"></script>
+  <script src="/js/dwd.js"></script>
+  <script src="/js/audit.js"></script>
+  <script>
+  // ── Konstansok ─────────────────────────────────────────────────────────────
+  const FIELDS_KEY = "notox-fields";
+
+  const CROP_LABELS = {
+    wheat:"Búza", corn:"Kukorica", sunflower:"Napraforgó", rape:"Repce",
+    barley:"Árpa", rye:"Rozs", sugarbeet:"Cukorrépa", potato:"Burgonya",
+    soy:"Szójabab", other:"Egyéb", unknown:"Ismeretlen"
+  };
+
+  // Beépített modellek (szinkronban app.js-sel)
+  const BUILTIN_MODELS = [
+    { id: "__dewolf2003",   name: "Fuzárium FHB",       color: "#4caf7d", params: { topt:22.5, sigma:6, rh_thr:60, precip_min:1,   risk_thr:50 } },
+    { id: "__wolf1999",     name: "Fuzárium (logiszt.)", color: "#5b9cf6", params: { topt:20,   sigma:8, rh_thr:65, precip_min:2,   risk_thr:40 } },
+    { id: "__coakley1988",  name: "Sárgarozsda",        color: "#d4a017", params: { topt:11,   sigma:5, rh_thr:80, precip_min:0.5, risk_thr:30 } },
+    { id: "__madden1981",   name: "Levélrozsda",        color: "#e05252", params: { topt:20,   sigma:6, rh_thr:75, precip_min:0.2, risk_thr:35 } },
+    { id: "__pscheidt1993", name: "Lisztharmat",        color: "#a78bfa", params: { topt:21,   sigma:5, rh_thr:55, precip_min:0,   risk_thr:40 } },
+  ];
+
+  function loadModels() {
+    let custom = [];
+    try { custom = JSON.parse(localStorage.getItem("notox-models") || "[]"); } catch {}
+    return [...BUILTIN_MODELS, ...custom];
+  }
+
+  function runModelDay(params, tmean, rh, precip) {
+    if (tmean === null || rh === null) return 0;
+    if ((params.type || "gaussian") === "linear_t") {
+      const dd = Math.max(0, tmean - (params.t_base ?? 10));
+      const tf = Math.min(1, dd / (params.dd_max ?? 15));
+      const rf = rh >= (params.rh_thr ?? 60) ? Math.min(1, (rh - params.rh_thr) / (100 - params.rh_thr)) : 0;
+      return Math.min(1, tf * rf);
+    }
+    const tf = Math.exp(-0.5 * Math.pow((tmean - params.topt) / params.sigma, 2));
+    const rf = rh >= params.rh_thr ? (rh - params.rh_thr) / (100 - params.rh_thr) : 0;
+    const pf = precip > 0 ? 1 - Math.exp(-precip / (params.precip_min || 1)) : 0;
+    return Math.min(1, tf * rf * pf);
+  }
+
+  function riskColor(v) {
+    if (v >= 75) return "#e05252";
+    if (v >= 50) return "#dc5a1e";
+    if (v >= 20) return "#d4a017";
+    return "#4caf7d";
+  }
+  function riskLabel(v) {
+    if (v >= 75) return "Kritikus";
+    if (v >= 50) return "Magas";
+    if (v >= 20) return "Közepes";
+    return "Alacsony";
+  }
+
+  // ── CRUD ───────────────────────────────────────────────────────────────────
+  function loadFields() {
+    try { return JSON.parse(localStorage.getItem(FIELDS_KEY) || "[]"); } catch { return []; }
+  }
+  function saveFields(arr) { localStorage.setItem(FIELDS_KEY, JSON.stringify(arr)); }
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+  // ── Risk cache (in-memory) ─────────────────────────────────────────────────
+  const _riskCache = {};
+
+  async function fetchRisk(field) {
+    if (_riskCache[field.id]) return _riskCache[field.id];
+    const dwdOk = await isDWDAvailable().catch(() => false);
+    const series = dwdOk
+      ? await fetchWeatherDWD(field.lat, field.lon, 5)
+      : await fetchWeather(field.lat, field.lon, 5);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const row = series ? (series.find(d => d.date === today) || series[0]) : null;
+    if (!row) return null;
+
+    const models = loadModels();
+    const results = models.map(m => ({
+      id: m.id, name: m.name, color: m.color || "#4caf7d",
+      risk: Math.round(runModelDay(m.params, row.tmean, row.rh_mean, row.precip) * 100),
+    }));
+    const cache = { results, row, source: row.source || (dwdOk ? "icon-eu-dwd" : "icon") };
+    _riskCache[field.id] = cache;
+    return cache;
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  function renderFields() {
+    const fields = loadFields();
+    const grid = document.getElementById("field-grid");
+
+    grid.innerHTML = fields.map(f => {
+      const risk = _riskCache[f.id];
+      const maxRisk = risk ? Math.max(...risk.results.map(r => r.risk)) : null;
+      const soilCount  = (f.soilDiseases  || []).length;
+      const plantCount = (f.plantDiseases || []).length;
+      return `
+        <div class="field-card" onclick="openDetail('${f.id}')">
+          <button class="fc-del" onclick="event.stopPropagation();deleteField('${f.id}')"
+            title="Törlés">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg>
+          </button>
+          <div class="fc-name">${f.name}</div>
+          <div class="fc-meta">${f.lat?.toFixed(4)}, ${f.lon?.toFixed(4)} · ${CROP_LABELS[f.crop] || f.crop}</div>
+          <div class="fc-tags">
+            ${f.prevCrop && f.prevCrop !== "unknown" ? `<span class="tag">↩ ${CROP_LABELS[f.prevCrop]}</span>` : ""}
+            ${soilCount  ? `<span class="tag warn">🧫 ${soilCount} talaj</span>`  : ""}
+            ${plantCount ? `<span class="tag warn">🌿 ${plantCount} növény</span>` : ""}
+            ${maxRisk !== null ? `<span class="tag ${maxRisk >= 75 ? "danger" : maxRisk >= 20 ? "warn" : "ok"}">${riskLabel(maxRisk)} · ${maxRisk}</span>` : `<span class="tag">betöltés…</span>`}
+          </div>
+          ${maxRisk !== null ? `
+          <div class="fc-risk">
+            <div class="risk-bar-sm">
+              <div class="risk-bar-sm-fill" style="width:${maxRisk}%;background:${riskColor(maxRisk)};"></div>
+            </div>
+            <span class="risk-score" style="color:${riskColor(maxRisk)};min-width:30px;text-align:right;">${maxRisk}</span>
+          </div>` : ""}
+        </div>`;
+    }).join("") + `
+      <div class="field-add-card" onclick="showForm()">
+        <svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>
+        <span style="font-size:12px;">Tábla hozzáadása</span>
+      </div>`;
+  }
+
+  let _editingId = null;
+
+  function showForm(id = null) {
+    _editingId = id;
+    document.getElementById("detail-wrap").style.display = "none";
+    document.getElementById("field-form-wrap").style.display = "";
+    document.getElementById("form-title").textContent = id ? "Tábla szerkesztése" : "Új tábla";
+
+    // Reset
+    ["f-name","f-lat","f-lon","f-notes"].forEach(i => document.getElementById(i).value = "");
+    document.getElementById("f-crop").value      = "wheat";
+    document.getElementById("f-prev-crop").value = "unknown";
+    document.querySelectorAll("#soil-diseases input, #plant-diseases input")
+      .forEach(cb => cb.checked = false);
+
+    if (id) {
+      const field = loadFields().find(f => f.id === id);
+      if (!field) return;
+      document.getElementById("f-name").value     = field.name;
+      document.getElementById("f-lat").value      = field.lat;
+      document.getElementById("f-lon").value      = field.lon;
+      document.getElementById("f-crop").value     = field.crop || "wheat";
+      document.getElementById("f-prev-crop").value= field.prevCrop || "unknown";
+      document.getElementById("f-notes").value    = field.notes || "";
+      (field.soilDiseases  || []).forEach(v => {
+        const cb = document.querySelector(`#soil-diseases input[value="${v}"]`);
+        if (cb) cb.checked = true;
+      });
+      (field.plantDiseases || []).forEach(v => {
+        const cb = document.querySelector(`#plant-diseases input[value="${v}"]`);
+        if (cb) cb.checked = true;
+      });
+    }
+  }
+
+  function hideForm() {
+    _editingId = null;
+    document.getElementById("field-form-wrap").style.display = "none";
+  }
+
+  function saveField() {
+    const name = document.getElementById("f-name").value.trim();
+    const lat  = parseFloat(document.getElementById("f-lat").value);
+    const lon  = parseFloat(document.getElementById("f-lon").value);
+    if (!name)       { alert("Add meg a tábla nevét!"); return; }
+    if (isNaN(lat) || isNaN(lon)) { alert("Érvényes koordinátát adj meg!"); return; }
+
+    const soilDiseases  = [...document.querySelectorAll("#soil-diseases input:checked")].map(cb => cb.value);
+    const plantDiseases = [...document.querySelectorAll("#plant-diseases input:checked")].map(cb => cb.value);
+
+    const fields = loadFields();
+    if (_editingId) {
+      const idx = fields.findIndex(f => f.id === _editingId);
+      if (idx >= 0) {
+        fields[idx] = { ...fields[idx], name, lat, lon,
+          crop:         document.getElementById("f-crop").value,
+          prevCrop:     document.getElementById("f-prev-crop").value,
+          notes:        document.getElementById("f-notes").value.trim(),
+          soilDiseases, plantDiseases,
+        };
+        delete _riskCache[_editingId];
+        auditLog("field_update", `${name} (${lat.toFixed(3)}, ${lon.toFixed(3)})`);
+      }
+    } else {
+      fields.push({
+        id: uid(), name, lat, lon,
+        crop:         document.getElementById("f-crop").value,
+        prevCrop:     document.getElementById("f-prev-crop").value,
+        notes:        document.getElementById("f-notes").value.trim(),
+        soilDiseases, plantDiseases,
+        createdAt:    new Date().toISOString(),
+      });
+      auditLog("field_save", `${name} (${lat.toFixed(3)}, ${lon.toFixed(3)})`);
+    }
+    saveFields(fields);
+    hideForm();
+    renderFields();
+    loadAllRisks();
+  }
+
+  function deleteField(id) {
+    const fields = loadFields();
+    const f = fields.find(x => x.id === id);
+    if (!f || !confirm(`Törlöd a(z) „${f.name}" táblát?`)) return;
+    auditLog("field_delete", f.name);
+    saveFields(fields.filter(x => x.id !== id));
+    delete _riskCache[id];
+    document.getElementById("detail-wrap").style.display = "none";
+    renderFields();
+  }
+
+  // ── Detail panel ───────────────────────────────────────────────────────────
+  async function openDetail(id) {
+    const field = loadFields().find(f => f.id === id);
+    if (!field) return;
+
+    document.getElementById("field-form-wrap").style.display = "none";
+    document.getElementById("detail-wrap").style.display = "";
+    document.getElementById("detail-name").textContent = field.name;
+    document.getElementById("detail-meta").textContent =
+      `${field.lat?.toFixed(4)}, ${field.lon?.toFixed(4)} · ${CROP_LABELS[field.crop] || field.crop}` +
+      (field.prevCrop && field.prevCrop !== "unknown" ? ` · előveteménny: ${CROP_LABELS[field.prevCrop]}` : "") +
+      (field.notes ? ` · ${field.notes}` : "");
+
+    document.getElementById("detail-models").innerHTML =
+      `<div style="color:var(--text-dim);font-size:11px;">Betöltés…</div>`;
+    document.getElementById("detail-kpis").innerHTML = "";
+
+    // Minták
+    const soilTags  = (field.soilDiseases  || []).join(", ").replace(/_/g, " ") || "—";
+    const plantTags = (field.plantDiseases || []).join(", ").replace(/_/g, " ") || "—";
+
+    document.getElementById("detail-kpis").innerHTML = `
+      <div class="stat">
+        <div class="label">🧫 Talajminták</div>
+        <div style="font-size:12px;color:var(--text-br);margin-top:4px;">${(field.soilDiseases||[]).length ? (field.soilDiseases||[]).join(", ").replace(/_/g," ") : "Tiszta"}</div>
+      </div>
+      <div class="stat">
+        <div class="label">🌿 Növényminták</div>
+        <div style="font-size:12px;color:var(--text-br);margin-top:4px;">${(field.plantDiseases||[]).length ? (field.plantDiseases||[]).join(", ").replace(/_/g," ") : "Tiszta"}</div>
+      </div>`;
+
+    try {
+      const spinner = document.getElementById("spinner");
+      spinner.style.display = "block";
+      const risk = await fetchRisk(field);
+      spinner.style.display = "none";
+
+      if (!risk) {
+        document.getElementById("detail-models").innerHTML =
+          `<div style="color:#e05252;font-size:11px;">Nem sikerült betölteni az időjárás-adatot.</div>`;
+        return;
+      }
+
+      auditLog("field_run", `${field.name} · max kockázat: ${Math.max(...risk.results.map(r => r.risk))}`);
+
+      document.getElementById("detail-models").innerHTML = risk.results.map(r => `
+        <div class="model-result">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <span class="mr-label">${r.name}</span>
+            <span class="risk-score" style="color:${riskColor(r.risk)};">${r.risk} · ${riskLabel(r.risk)}</span>
+          </div>
+          <div class="risk-bar-lg">
+            <div class="risk-bar-lg-fill" style="width:${r.risk}%;background:${riskColor(r.risk)};"></div>
+          </div>
+        </div>`).join("");
+
+      const src = risk.source === "icon-eu-dwd" ? "DWD ICON-EU · 7 km" : "Open-Meteo ICON-EU";
+      const row = risk.row;
+      document.getElementById("detail-source").textContent =
+        `Forrás: ${src} · ${row.date} · T: ${row.tmean?.toFixed(1) ?? "—"}°C · RH: ${row.rh_mean !== null ? Math.round(row.rh_mean) : "—"}% · Csap: ${row.precip?.toFixed(1) ?? "—"}mm`;
+
+    } catch(e) {
+      document.getElementById("spinner").style.display = "none";
+      document.getElementById("detail-models").innerHTML =
+        `<div style="color:#e05252;font-size:11px;">Hiba: ${e.message}</div>`;
+    }
+  }
+
+  // ── Betölt minden tábla kockázatát a háttérben ────────────────────────────
+  async function loadAllRisks() {
+    const fields = loadFields();
+    for (const f of fields) {
+      try { await fetchRisk(f); } catch {}
+    }
+    renderFields();
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  document.getElementById("btn-add").onclick     = () => showForm();
+  document.getElementById("btn-save-field").onclick  = saveField;
+  document.getElementById("btn-cancel-field").onclick = hideForm;
+  document.getElementById("btn-close-detail").onclick = () => {
+    document.getElementById("detail-wrap").style.display = "none";
+  };
+
+  renderFields();
+  loadAllRisks();
+  </script>
+</body>
+</html>

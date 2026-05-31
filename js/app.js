@@ -5,12 +5,17 @@ let riskChart = null;
 
 const LOCATIONS = {
   "47.4979,19.0402": "Budapest",
-  "47.5317,21.6273": "Debrecen",
-  "46.4167,20.3333": "Hódmezővásárhely",
-  "47.1860,18.4131": "Székesfehérvár",
-  "46.0727,18.2323": "Pécs",
-  "47.6875,17.6504": "Győr",
-  "46.3667,17.7967": "Kaposvár",
+  "47.5977,19.3631": "Gödöllő (MATE)",
+  "47.7864,19.9309": "Gyöngyös (MATE)",
+  "47.3920,18.9167": "Érd",
+  "47.1703,19.7997": "Cegléd",
+  "46.9061,19.6913": "Kecskemét",
+  "47.3192,20.9253": "Karcag",
+  "46.8630,20.5420": "Szarvas",
+  "46.2530,20.1480": "Szeged",
+  "46.7660,17.2469": "Keszthely (MATE)",
+  "46.7989,17.5107": "Badacsonytomaj",
+  "46.3667,17.7967": "Kaposvár (MATE)",
 };
 
 // Line colors for multiple datasets
@@ -105,9 +110,19 @@ function selectedModelIds() {
 }
 
 // ── Leaflet map ───────────────────────────────────────────────────────────
+function _mapTileUrl() {
+  return (document.documentElement.classList.contains("theme-light") ||
+          document.body?.classList.contains("theme-light"))
+    ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+}
+
 function initMap() {
   map = L.map("map", { zoomControl: true, attributionControl: false }).setView([47.2, 19.4], 7);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(map);
+  const tl = L.tileLayer(_mapTileUrl(), { maxZoom: 19 }).addTo(map);
+  new MutationObserver(() => {
+    tl.setUrl(_mapTileUrl());
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
   marker = L.circleMarker([47.4979, 19.0402], {
     radius: 8, color: "#4caf7d", fillColor: "#4caf7d", fillOpacity: 0.8, weight: 2,
   }).addTo(map);
@@ -163,7 +178,17 @@ async function runForecast() {
   setLoading(true);
 
   try {
-    const weather = await fetchWeather(lat, lon, days);
+    const dwdOk = await isDWDAvailable().catch(() => false);
+    let weather;
+    if (dwdOk && days <= 5) {
+      weather = await fetchWeatherDWD(lat, lon, 5);
+      const src = document.getElementById("sub-source");
+      if (src) src.textContent = "DWD ICON-EU · 7 km";
+    } else {
+      weather = await fetchWeather(lat, lon, days);
+      const src = document.getElementById("sub-source");
+      if (src) src.textContent = "Open-Meteo ICON-EU";
+    }
     if (!weather.length) throw new Error("Nem érkezett időjárás-adat.");
 
     const today = new Date().toISOString().slice(0, 10);
