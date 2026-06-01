@@ -198,13 +198,9 @@ body.app .page-wrap {
 .sb-item svg    { flex-shrink: 0; }
 .sidebar.collapsed .sb-item span { display: none; }
 
-.sb-admin-divider {
-  height: 1px; background: var(--border);
-  margin: 4px 8px;
-}
+.sb-admin-divider { display: none; }
 .sb-item-admin { color: var(--text-dim); }
 .sb-item-admin.active { color: var(--green); background: var(--green-soft); }
-.sidebar.collapsed .sb-admin-divider { margin: 4px 6px; }
 
 .sb-footer {
   display: flex; align-items: center; gap: 8px;
