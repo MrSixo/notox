@@ -204,20 +204,24 @@ async function injectShell() {
 
   // Sidebar HTML
   const strippedPath = path.replace(/\.html$/, "");
-  const allNavItems = isAdmin
-    ? [...NAV_ITEMS, { href: "/admin.html", label: "Admin", icon: "admin", match: ["/admin.html"] }]
-    : NAV_ITEMS;
-  const navHtml = allNavItems.map(it => {
+  const navHtml = NAV_ITEMS.map(it => {
     const active = it.match.some(m => {
       const s = m.replace(/\.html$/, "");
       return strippedPath === s || strippedPath.endsWith(s);
     });
-    const isAdminItem = it.icon === "admin";
-    return `<a href="${it.href}" class="sb-item${active ? " active" : ""}${isAdminItem ? " sb-item-admin" : ""}">
+    return `<a href="${it.href}" class="sb-item${active ? " active" : ""}">
       ${svg(it.icon, 14)}
       <span>${it.label}</span>
     </a>`;
   }).join("");
+
+  // Admin — külön, a footer fölött, elválasztóvonallal
+  const adminActive = strippedPath === "/admin" || strippedPath.endsWith("/admin");
+  const adminHtml = isAdmin ? `
+    <div class="sb-admin-divider"></div>
+    <a href="/admin.html" class="sb-item sb-item-admin${adminActive ? " active" : ""}">
+      ${svg("admin", 14)}<span>Admin</span>
+    </a>` : "";
 
   const initials = (account.name || account.username || "?")
     .split(/\s+/).map(s => s[0]).slice(0, 2).join("").toUpperCase();
@@ -232,6 +236,7 @@ async function injectShell() {
       <span class="sb-beta">beta</span>
     </div>
     <nav class="sb-nav">${navHtml}</nav>
+    ${adminHtml}
     <div class="sb-footer">
       <div class="sb-avatar">${initials}</div>
       <div class="sb-who">

@@ -180,26 +180,14 @@
     </div>
 
     <!-- API kulcs beállítás -->
-    <div class="api-panel" id="api-panel">
-      <div class="api-panel-head" onclick="toggleApiPanel()">
+    <!-- API kulcs státusz (csak olvasható — beállítás az Admin panelben) -->
+    <div class="api-panel" id="api-panel" style="cursor:default;">
+      <div class="api-panel-head" style="cursor:default;">
         <span class="api-panel-title">
           <span class="api-status-dot" id="api-dot"></span>
           Claude API kulcs
         </span>
-        <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="api-head-hint">kattints a beállításhoz</span>
-      </div>
-      <div class="api-panel-body" id="api-panel-body">
-        <p class="api-note">
-          Az elemzéshez Anthropic Claude API kulcs szükséges. A kulcs kizárólag a böngésző
-          localStorage-jában tárolódik (<code>notox-claude-key</code>), a szerverre nem kerül fel.
-          API kulcsot az <strong>Anthropic Console</strong>-ban tudsz létrehozni.
-        </p>
-        <div class="api-row">
-          <input type="password" class="form-input" id="api-key-input"
-            placeholder="sk-ant-api03-…" style="flex:1;font-family:var(--mono);font-size:11px;" />
-          <button class="btn btn-primary" onclick="saveApiKey()">Mentés</button>
-          <button class="btn" onclick="clearApiKey()">Törlés</button>
-        </div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="api-head-hint"></span>
       </div>
     </div>
 
@@ -365,7 +353,7 @@
       const dot  = document.getElementById('api-dot');
       const hint = document.getElementById('api-head-hint');
       dot.className = 'api-status-dot' + (hasKey ? ' ok' : '');
-      hint.textContent = hasKey ? 'kulcs beállítva ✓' : 'kattints a beállításhoz';
+      hint.textContent = hasKey ? 'kulcs beállítva ✓' : 'nincs beállítva — Admin panelben add meg';
     }
 
     // ── File / paste ──────────────────────────────────────────────
