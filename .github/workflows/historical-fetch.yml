@@ -1,0 +1,30 @@
+name: OMSZ historikus adatok
+
+on:
+  schedule:
+    - cron: "0 4 5 * *"   # havonta egyszer, 5-én 04:00 UTC (historikus lassan változik)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Függőségek
+        run: pip install requests
+      - name: OMSZ historikus letöltés és feldolgozás
+        run: python scripts/fetch_historical.py
+      - name: Commit és push
+        run: |
+          git config user.name  "Historikus Bot"
+          git config user.email "bot@notox.hu"
+          git add data/historical/
+          git diff --staged --quiet \
+            && echo "Nincs változás." \
+            || (git commit -m "📚 OMSZ historikus $(date -u '+%Y-%m-%d')" && git push)
