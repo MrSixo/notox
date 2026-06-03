@@ -318,21 +318,28 @@
     spinner.style.display = "block";
     try {
       const res = await fetch(OMSZ_URL + "?_=" + (force ? Date.now() : Math.floor(Date.now()/CACHE_TTL)));
+      if (!res.ok) throw new Error("OMSZ JSON HTTP " + res.status);
       _data = await res.json();
-      _data.stations = await enrichWithDWD(_data.stations);
 
-      // Időbélyeg
+      // 1) Azonnali megjelenítés az OMSZ mérésekből (DWD nélkül)
       const obsTime = new Date(_data.obs_time);
       document.getElementById("obs-time").textContent =
         `mérés ideje: ${obsTime.toLocaleTimeString("hu-HU",{hour:"2-digit",minute:"2-digit"})} UTC`;
-
       updateStats();
       updateMap();
       updateTable();
+      spinner.style.display = "none";   // a fő tartalom kész
+
+      // 2) DWD összehasonlítás a háttérben — nem blokkolja a megjelenítést
+      enrichWithDWD(_data.stations).then(enriched => {
+        _data.stations = enriched;
+        updateMap();
+        updateTable();   // DWD eltérés oszlop frissül
+      }).catch(e => console.warn("[omsz] DWD enrich kihagyva:", e));
+
     } catch(e) {
-      document.getElementById("obs-time").textContent = "Betöltési hiba";
+      document.getElementById("obs-time").textContent = "Betöltési hiba — kattints a Frissítésre";
       console.error("[omsz]", e);
-    } finally {
       spinner.style.display = "none";
     }
   }
