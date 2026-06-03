@@ -288,8 +288,13 @@
     try {
       _data = await loadOMSZ(force);
       const obsTime = new Date(_data.obs_time);
-      document.getElementById("obs-time").textContent =
-        `mérés ideje: ${obsTime.toLocaleTimeString("hu-HU",{hour:"2-digit",minute:"2-digit"})} UTC`;
+      const ageH = (Date.now() - obsTime.getTime()) / 3600000;
+      const ageTxt = ageH < 1 ? `${Math.round(ageH*60)} perce`
+                   : `${ageH.toFixed(1)} órája`;
+      const el = document.getElementById("obs-time");
+      el.textContent = `mérés: ${obsTime.toLocaleTimeString("hu-HU",{hour:"2-digit",minute:"2-digit"})} UTC (${ageTxt})`;
+      el.style.color = ageH > 3 ? "var(--amber)" : "";
+      el.title = ageH > 3 ? "Az adat régebbi a szokásosnál — az OMSZ pipeline 2 óránként frissít." : "";
       updateStats();
       updateMap();
       updateTable();

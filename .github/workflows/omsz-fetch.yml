@@ -2,7 +2,9 @@ name: OMSZ mérések frissítés
 
 on:
   schedule:
-    - cron: "12 * * * *"   # minden óra 12. percén (OMSZ ~10 perc késéssel publikál)
+    # Óránkénti cron a GitHubon megbízhatatlan (jitter, kihagyott példányok),
+    # ezért 2 óránként — a ritkább ütemezés stabilabban fut (mint a DWD 6h-s).
+    - cron: "10 */2 * * *"
   workflow_dispatch:
 
 permissions:
