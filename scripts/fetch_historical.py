@@ -63,17 +63,19 @@ def list_hourly_files():
     return by_station
 
 
-def parse_hourly_maxrh(data: bytes) -> dict:
-    """Órás ZIP → {date: napi max RH}. Memóriahatékony, soronként."""
-    day_max = {}
+def parse_hourly_rh(data: bytes) -> dict:
+    """Órás ZIP → {date: {max, min, h90, trh}} napi RH-aggregátumok.
+       max/min RH, RH≥90% órák (h90), és 15-30°C+RH≥90% órák (trh — De Wolf TRH9010 napi komponense)."""
+    days = {}  # date → dict(max,min,h90,trh)
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         name = next(n for n in z.namelist() if n.endswith(".csv"))
         raw = z.read(name).decode("utf-8", "replace")
-    u_idx = None
+    u_idx = t_idx = None
     for ln in raw.splitlines():
         if ln.startswith("StationNumber"):
             hdr = [h.strip() for h in ln.split(";")]
             u_idx = hdr.index("u") if "u" in hdr else None
+            t_idx = hdr.index("t") if "t" in hdr else None
             time_idx = hdr.index("Time") if "Time" in hdr else 1
             continue
         if u_idx is None or not ln or ln[0] in "#":
@@ -85,15 +87,29 @@ def parse_hourly_maxrh(data: bytes) -> dict:
             u = float(cols[u_idx])
             if u == MISSING:
                 continue
-            t = cols[time_idx].strip()
-            if len(t) < 8:
+            tm = cols[time_idx].strip()
+            if len(tm) < 8:
                 continue
-            d = t[:8]
-            if d not in day_max or u > day_max[d]:
-                day_max[d] = u
+            d = tm[:8]
+            rec = days.get(d)
+            if rec is None:
+                rec = {"max": u, "min": u, "h90": 0, "trh": 0}
+                days[d] = rec
+            if u > rec["max"]: rec["max"] = u
+            if u < rec["min"]: rec["min"] = u
+            if u >= 90:
+                rec["h90"] += 1
+                # hőmérséklet 15-30°C ellenőrzés a De Wolf TRH9010-hez
+                if t_idx is not None:
+                    try:
+                        tv = float(cols[t_idx])
+                        if tv != MISSING and 15 <= tv <= 30:
+                            rec["trh"] += 1
+                    except (ValueError, IndexError):
+                        pass
         except (ValueError, IndexError):
             continue
-    return day_max
+    return days
 
 
 def parse_zip(data: bytes):
@@ -174,11 +190,11 @@ def process_station(sid, periods, hourly_files, out_dir):
     if not meta or not all_rows:
         return None
 
-    # Napi max RH az órás adatból (date_compact "YYYYMMDD" → maxRH)
-    day_max_rh = {}
+    # Napi RH-aggregátumok az órás adatból (date_compact "YYYYMMDD" → {max,min,h90,trh})
+    day_rh = {}
     for hf in hourly_files:
         try:
-            day_max_rh.update(parse_hourly_maxrh(fetch(BASE_H + hf)))
+            day_rh.update(parse_hourly_rh(fetch(BASE_H + hf)))
         except Exception:
             pass
 
@@ -188,16 +204,18 @@ def process_station(sid, periods, hourly_files, out_dir):
     rows_sorted = []
     for d in sorted(seen):
         r = seen[d]            # [date, t, tn, tx, u, rau]
-        compact = d.replace("-", "")
-        umax = day_max_rh.get(compact)
-        umax = int(umax) if umax is not None else None
-        # új sorrend: [date, t, tn, tx, u, umax, rau]
-        rows_sorted.append([r[0], r[1], r[2], r[3], r[4], umax, r[5]])
+        rh = day_rh.get(d.replace("-", ""))
+        umax = int(rh["max"]) if rh else None
+        umin = int(rh["min"]) if rh else None
+        uh90 = rh["h90"]       if rh else None   # RH≥90% órák száma aznap
+        utrh = rh["trh"]       if rh else None   # 15-30°C + RH≥90% órák (De Wolf)
+        # cols: [date, t, tn, tx, u, umax, umin, uh90, utrh, rau]
+        rows_sorted.append([r[0], r[1], r[2], r[3], r[4], umax, umin, uh90, utrh, r[5]])
 
     station = {
         "id": meta["id"], "name": meta["name"], "lat": meta["lat"],
         "lon": meta["lon"], "elev": meta["elev"],
-        "cols": ["date", "t", "tn", "tx", "u", "umax", "rau"],
+        "cols": ["date", "t", "tn", "tx", "u", "umax", "umin", "uh90", "utrh", "rau"],
         "daily": rows_sorted,
     }
     path = out_dir / f"st_{meta['id']}.json.gz"
