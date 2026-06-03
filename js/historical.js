@@ -31,11 +31,14 @@ async function loadHistStation(id) {
     text = new TextDecoder().decode(buf);
   }
   const st = JSON.parse(text);
-  // daily sorok → objektum-tömb a könnyebb használathoz
-  // cols: ["date","t","tn","tx","u","rau"]
-  st.rows = st.daily.map(r => ({
-    date: r[0], t: r[1], tn: r[2], tx: r[3], u: r[4], rau: r[5],
-  }));
+  // daily sorok → objektum-tömb a cols alapján (robusztus az oszlopsorrendre)
+  // cols pl.: ["date","t","tn","tx","u","umax","rau"]
+  const cols = st.cols || ["date","t","tn","tx","u","rau"];
+  st.rows = st.daily.map(r => {
+    const o = {};
+    cols.forEach((c, i) => { o[c] = r[i]; });
+    return o;
+  });
   _histStationCache[id] = st;
   return st;
 }

@@ -23,7 +23,7 @@
       <div class="page-head">
         <div>
           <h1>Historikus elemző</h1>
-          <div class="sub">OMSZ mért napi adatok (2002–2025) · modellek visszamenőleges futtatása · <span id="hist-status">betöltés…</span></div>
+          <div class="sub">OMSZ mért napi adatok (2002–2025) · modellek napi <strong>max RH</strong> alapú futtatása · <span id="hist-status">betöltés…</span></div>
         </div>
         <div class="right"><div class="spinner" id="spinner" style="display:none;"></div></div>
       </div>
@@ -158,7 +158,9 @@
     for (const r of _station.rows) {
       const year = +r.date.slice(0, 4);
       if (year < yFrom || year > yTo) continue;
-      const risk = Math.round(runModelDay(model.params, r.t, r.u, r.rau, r.tx) * 100);
+      // RH: napi MAX (umax) a fertőzéshez releváns; fallback napi átlagra (u)
+      const rh = (r.umax ?? r.u);
+      const risk = Math.round(runModelDay(model.params, r.t, rh, r.rau, r.tx) * 100);
       if (!byYear[year]) byYear[year] = { crit:0, sum:0, n:0, peakRisk:-1, peakDate:null };
       const y = byYear[year];
       y.sum += risk; y.n++;

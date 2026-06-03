@@ -26,7 +26,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 WORKERS = 8  # párhuzamos letöltő szálak
 
-BASE = "https://odp.met.hu/climate/observations_hungary/daily/historical/"
+BASE   = "https://odp.met.hu/climate/observations_hungary/daily/historical/"
+BASE_H = "https://odp.met.hu/climate/observations_hungary/hourly/historical/"
 UA   = {"User-Agent": "No-tox/1.0 historical (github.com/MrSixo/notox)"}
 MISSING = -999
 
@@ -41,17 +42,58 @@ def fetch(url, binary=True):
 
 
 def list_station_files():
-    """Az index oldalról kigyűjti a HABP_1D_<id>_<start>_<end>_hist.zip fájlokat, állomásonként csoportosítva."""
+    """daily HABP_1D fájlok állomásonként csoportosítva."""
     html = fetch(BASE, binary=False)
     files = re.findall(r'HABP_1D_(\d+)_(\d+)_(\d+)_hist\.zip', html)
     by_station = {}
     for sid, start, end in files:
-        fname = f"HABP_1D_{sid}_{start}_{end}_hist.zip"
-        by_station.setdefault(sid, []).append((start, end, fname))
-    # rendezés időszak szerint
+        by_station.setdefault(sid, []).append((start, end, f"HABP_1D_{sid}_{start}_{end}_hist.zip"))
     for sid in by_station:
         by_station[sid].sort()
     return by_station
+
+
+def list_hourly_files():
+    """órás HABP_1H fájlok állomásonként — a napi max RH-hoz."""
+    html = fetch(BASE_H, binary=False)
+    files = re.findall(r'HABP_1H_(\d+)_(\d+)_(\d+)_hist\.zip', html)
+    by_station = {}
+    for sid, start, end in files:
+        by_station.setdefault(sid, []).append(f"HABP_1H_{sid}_{start}_{end}_hist.zip")
+    return by_station
+
+
+def parse_hourly_maxrh(data: bytes) -> dict:
+    """Órás ZIP → {date: napi max RH}. Memóriahatékony, soronként."""
+    day_max = {}
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        name = next(n for n in z.namelist() if n.endswith(".csv"))
+        raw = z.read(name).decode("utf-8", "replace")
+    u_idx = None
+    for ln in raw.splitlines():
+        if ln.startswith("StationNumber"):
+            hdr = [h.strip() for h in ln.split(";")]
+            u_idx = hdr.index("u") if "u" in hdr else None
+            time_idx = hdr.index("Time") if "Time" in hdr else 1
+            continue
+        if u_idx is None or not ln or ln[0] in "#":
+            continue
+        cols = ln.split(";")
+        if len(cols) <= u_idx:
+            continue
+        try:
+            u = float(cols[u_idx])
+            if u == MISSING:
+                continue
+            t = cols[time_idx].strip()
+            if len(t) < 8:
+                continue
+            d = t[:8]
+            if d not in day_max or u > day_max[d]:
+                day_max[d] = u
+        except (ValueError, IndexError):
+            continue
+    return day_max
 
 
 def parse_zip(data: bytes):
@@ -117,8 +159,9 @@ def parse_zip(data: bytes):
     return meta, rows
 
 
-def process_station(sid, periods, out_dir):
-    """Egy állomás teljes feldolgozása → index-bejegyzés vagy None."""
+def process_station(sid, periods, hourly_files, out_dir):
+    """Egy állomás teljes feldolgozása → index-bejegyzés vagy None.
+    Napi sorok + napi max RH (umax) az órás adatból."""
     all_rows = []
     meta = None
     for start, end, fname in periods:
@@ -131,15 +174,30 @@ def process_station(sid, periods, out_dir):
     if not meta or not all_rows:
         return None
 
+    # Napi max RH az órás adatból (date_compact "YYYYMMDD" → maxRH)
+    day_max_rh = {}
+    for hf in hourly_files:
+        try:
+            day_max_rh.update(parse_hourly_maxrh(fetch(BASE_H + hf)))
+        except Exception:
+            pass
+
     seen = {}
     for r in all_rows:
         seen[r[0]] = r
-    rows_sorted = [seen[d] for d in sorted(seen)]
+    rows_sorted = []
+    for d in sorted(seen):
+        r = seen[d]            # [date, t, tn, tx, u, rau]
+        compact = d.replace("-", "")
+        umax = day_max_rh.get(compact)
+        umax = int(umax) if umax is not None else None
+        # új sorrend: [date, t, tn, tx, u, umax, rau]
+        rows_sorted.append([r[0], r[1], r[2], r[3], r[4], umax, r[5]])
 
     station = {
         "id": meta["id"], "name": meta["name"], "lat": meta["lat"],
         "lon": meta["lon"], "elev": meta["elev"],
-        "cols": ["date", "t", "tn", "tx", "u", "rau"],
+        "cols": ["date", "t", "tn", "tx", "u", "umax", "rau"],
         "daily": rows_sorted,
     }
     path = out_dir / f"st_{meta['id']}.json.gz"
@@ -159,16 +217,17 @@ def main():
     out_dir = Path("data/historical")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    log("Állomáslista lekérése…")
+    log("Állomáslista lekérése (daily + hourly)…")
     by_station = list_station_files()
-    log(f"  {len(by_station)} állomás · {WORKERS} párhuzamos szál")
+    hourly_by_station = list_hourly_files()
+    log(f"  {len(by_station)} daily állomás, {len(hourly_by_station)} órás · {WORKERS} szál")
 
     index = []
     ok, fail, done = 0, 0, 0
     total = len(by_station)
 
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
-        futures = { ex.submit(process_station, sid, periods, out_dir): sid
+        futures = { ex.submit(process_station, sid, periods, hourly_by_station.get(sid, []), out_dir): sid
                     for sid, periods in by_station.items() }
         for fut in as_completed(futures):
             sid = futures[fut]
