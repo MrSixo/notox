@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>No-tox — Mérések</title>
+  <script src="/js/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+  <style>
+    #meas-map { height: 480px; }
+    .meas-popup-title { font-weight:700; font-size:12px; color:var(--text-br); margin-bottom:6px; }
+    .meas-row { display:flex; justify-content:space-between; gap:12px; font-size:11px; color:var(--text-muted); margin-bottom:2px; }
+    .meas-val { font-family:var(--mono); color:var(--text-br); font-weight:600; }
+    .meas-diff { font-family:var(--mono); font-size:10px; }
+    .meas-diff.pos { color:#e05252; }
+    .meas-diff.neg { color:#5b9cf6; }
+    .meas-diff.ok  { color:#4caf7d; }
+    .stat-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:10px; }
+    .stat-box { background:var(--bg-1); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px 14px; }
+    .stat-label { font-family:var(--mono); font-size:9px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+    .stat-val { font-family:var(--mono); font-size:20px; font-weight:700; color:var(--text-br); }
+    .stat-unit { font-size:11px; color:var(--text-dim); }
+    .stat-sub { font-size:10px; color:var(--text-dim); margin-top:2px; }
+    .layer-btn { padding:4px 10px; font-size:11px; border-radius:var(--radius); border:1px solid var(--border); background:transparent; color:var(--text-muted); cursor:pointer; transition:background .12s,color .12s,border-color .12s; font-family:var(--mono); }
+    .layer-btn.active { background:var(--green-soft); color:var(--green); border-color:var(--green-line); }
+  </style>
+</head>
+<body>
+  <main class="page-wrap">
+    <div class="page">
+
+      <div class="page-head">
+        <div>
+          <h1>Mérések</h1>
+          <div class="sub">OMSZ automata állomások · ténylegesen mért adatok · <span id="obs-time">betöltés…</span></div>
+        </div>
+        <div class="right">
+          <div class="spinner" id="spinner"></div>
+          <button class="btn" id="btn-refresh" onclick="loadData(true)">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 2.5A6.5 6.5 0 1 1 7 1.5M13.5 2.5V6M13.5 2.5H10"/></svg>
+            Frissítés
+          </button>
+        </div>
+      </div>
+
+      <!-- Stat összesítő -->
+      <div class="stat-grid" id="stat-grid" style="margin-bottom:14px;"></div>
+
+      <!-- Térkép -->
+      <div class="card" style="margin-bottom:14px;overflow:hidden;">
+        <div class="card-h">
+          <h3>Állomástérkép — aktuális mérések</h3>
+          <div class="right" style="gap:6px;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);">Réteg:</span>
+            <button class="layer-btn active" data-mlayer="t">Hőmérséklet</button>
+            <button class="layer-btn" data-mlayer="u">Páratartalom</button>
+            <button class="layer-btn" data-mlayer="r">Csapadék</button>
+            <button class="layer-btn" data-mlayer="fs">Szél</button>
+          </div>
+        </div>
+        <div id="meas-map"></div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+          font-family:var(--mono);font-size:10px;color:var(--text-dim);
+          padding:8px 16px;border-top:1px solid var(--border);" id="meas-legend"></div>
+      </div>
+
+      <!-- Állomás táblázat -->
+      <div class="card">
+        <div class="card-h">
+          <h3>Állomások részletei</h3>
+          <div class="right"><button class="btn btn-sm" onclick="exportCsv()">CSV</button></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:11px;" id="station-table">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border);">
+                <th style="padding:7px 12px;text-align:left;font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;font-weight:500;">Állomás</th>
+                <th style="padding:7px 12px;font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;font-weight:500;">T (°C)</th>
+                <th style="padding:7px 12px;font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;font-weight:500;">RH (%)</th>
+                <th style="padding:7px 12px;font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;font-weight:500;">Csap (mm)</th>
+                <th style="padding:7px 12px;font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;font-weight:500;">Szél (m/s)</th>
+                <th style="padding:7px 12px;font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;font-weight:500;">DWD T eltérés</th>
+              </tr>
+            </thead>
+            <tbody id="station-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <script src="/js/config.js"></script>
+  <script src="/js/shell.js"></script>
+  <script src="/js/dwd.js"></script>
+  <script>
+  // ── Konfiguráció ───────────────────────────────────────────────────────────
+  const OMSZ_URL = "https://mrsixo.github.io/notox/data/omsz_latest.json";
+  const CACHE_TTL = 55 * 60 * 1000; // 55 perc
+
+  let _map = null;
+  let _data = null;
+  let _currentLayer = "t";
+  let _dwdData = null;
+
+  // ── Segédfüggvények ────────────────────────────────────────────────────────
+  function isLight() {
+    return document.documentElement.classList.contains("theme-light") ||
+           document.body?.classList.contains("theme-light");
+  }
+  function mapStyle() {
+    return isLight()
+      ? "https://tiles.openfreemap.org/styles/positron"
+      : "https://tiles.openfreemap.org/styles/dark";
+  }
+
+  function stationColor(s, layer) {
+    const v = s[layer];
+    if (v === null || v === undefined) return "#555";
+    if (layer === "t")  return v > 30 ? "#e05252" : v > 24 ? "#dc5a1e" : v > 18 ? "#d4a017" : v > 10 ? "#4caf7d" : "#5b9cf6";
+    if (layer === "u")  return v > 85 ? "#5b9cf6" : v > 70 ? "#4caf7d" : v > 55 ? "#d4a017" : "#dc5a1e";
+    if (layer === "r")  return v === 0 ? "#4a5e48" : v > 10 ? "#e05252" : v > 3 ? "#5b9cf6" : "#4caf7d";
+    if (layer === "fs") return v > 10 ? "#e05252" : v > 5 ? "#d4a017" : v > 2 ? "#4caf7d" : "#5b9cf6";
+    return "#4caf7d";
+  }
+
+  function layerLabel(layer, v) {
+    if (v === null || v === undefined) return "—";
+    if (layer === "t")  return v.toFixed(1) + "°C";
+    if (layer === "u")  return Math.round(v) + "%";
+    if (layer === "r")  return v.toFixed(1) + "mm";
+    if (layer === "fs") return v.toFixed(1) + "m/s";
+    return String(v);
+  }
+
+  function legendItems(layer) {
+    if (layer === "u")  return [["#dc5a1e","<55%"],["#d4a017","55-70%"],["#4caf7d","70-85%"],["#5b9cf6",">85%"]];
+    if (layer === "r")  return [["#4a5e48","0mm"],["#4caf7d","0-3mm"],["#5b9cf6","3-10mm"],["#e05252",">10mm"]];
+    if (layer === "fs") return [["#5b9cf6","0-2m/s"],["#4caf7d","2-5m/s"],["#d4a017","5-10m/s"],["#e05252",">10m/s"]];
+    return [["#5b9cf6","<10°C"],["#4caf7d","10-18°C"],["#d4a017","18-24°C"],["#dc5a1e","24-30°C"],["#e05252",">30°C"]];
+  }
+
+  // ── Térkép ─────────────────────────────────────────────────────────────────
+  function initMap() {
+    _map = new maplibregl.Map({
+      container: "meas-map",
+      style: mapStyle(),
+      center: [19.5, 47.15],
+      zoom: 6.8,
+      attributionControl: false,
+    });
+    _map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+
+    _map.on("load", () => {
+      _map.addSource("stations", { type: "geojson", data: { type: "FeatureCollection", features: [] }, generateId: true });
+      _map.addLayer({
+        id: "st-circle", type: "circle", source: "stations",
+        paint: {
+          "circle-radius": ["case", ["boolean",["feature-state","hover"],false], 11, 8],
+          "circle-color": ["get","color"],
+          "circle-stroke-color": ["case", ["boolean",["feature-state","hover"],false], "#fff", "#0b0f0d"],
+          "circle-stroke-width": ["case", ["boolean",["feature-state","hover"],false], 2, 1.5],
+          "circle-opacity": 0.92,
+        },
+      });
+
+      // Tooltip
+      const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, maxWidth: "260px" });
+      let hovId = null;
+      _map.on("mousemove", "st-circle", e => {
+        if (!e.features.length) return;
+        _map.getCanvas().style.cursor = "pointer";
+        if (hovId !== null) _map.setFeatureState({ source:"stations", id:hovId }, { hover:false });
+        hovId = e.features[0].id;
+        _map.setFeatureState({ source:"stations", id:hovId }, { hover:true });
+        const p = e.features[0].properties;
+        popup.setLngLat(e.lngLat).setHTML(buildPopup(p)).addTo(_map);
+      });
+      _map.on("mouseleave", "st-circle", () => {
+        _map.getCanvas().style.cursor = "";
+        if (hovId !== null) _map.setFeatureState({ source:"stations", id:hovId }, { hover:false });
+        hovId = null;
+        popup.remove();
+      });
+
+      if (_data) updateMap();
+    });
+
+    // Témaváltás
+    const obs = new MutationObserver(() => {
+      _map.setStyle(mapStyle());
+      _map.once("style.load", () => {
+        // Rétegek újratelepítése
+        _map.addSource("stations", { type: "geojson", data: buildGeoJSON(), generateId: true });
+        _map.addLayer({ id:"st-circle", type:"circle", source:"stations",
+          paint: { "circle-radius":8, "circle-color":["get","color"],
+                   "circle-stroke-color":"#0b0f0d", "circle-stroke-width":1.5, "circle-opacity":0.92 }
+        });
+      });
+    });
+    obs.observe(document.documentElement, { attributes:true, attributeFilter:["class"] });
+    obs.observe(document.body, { attributes:true, attributeFilter:["class"] });
+  }
+
+  function buildPopup(p) {
+    const dwd = p.dwd_t !== "null" && p.dwd_t !== null ? parseFloat(p.dwd_t) : null;
+    const t   = p.t !== "null" && p.t !== null ? parseFloat(p.t) : null;
+    const diff = (t !== null && dwd !== null) ? t - dwd : null;
+    const diffHtml = diff !== null
+      ? `<div class="meas-row"><span>DWD eltérés:</span><span class="meas-val meas-diff ${diff > 1.5 ? 'pos' : diff < -1.5 ? 'neg' : 'ok'}">${diff > 0 ? '+' : ''}${diff.toFixed(1)}°C</span></div>`
+      : "";
+    return `
+      <div class="meas-popup-title">${p.name}</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:6px;">${parseFloat(p.lat).toFixed(4)}°N ${parseFloat(p.lon).toFixed(4)}°E · ${p.elev ? p.elev + 'm' : ''}</div>
+      ${p.t !== "null" ? `<div class="meas-row"><span>Hőmérséklet:</span><span class="meas-val">${parseFloat(p.t).toFixed(1)}°C</span></div>` : ""}
+      ${p.tn !== "null" && p.tx !== "null" ? `<div class="meas-row"><span>Min / Max:</span><span class="meas-val">${parseFloat(p.tn).toFixed(1)} / ${parseFloat(p.tx).toFixed(1)}°C</span></div>` : ""}
+      ${p.u !== "null" ? `<div class="meas-row"><span>Páratartalom:</span><span class="meas-val">${p.u}%</span></div>` : ""}
+      ${p.r !== "null" ? `<div class="meas-row"><span>Csapadék:</span><span class="meas-val">${parseFloat(p.r).toFixed(1)}mm</span></div>` : ""}
+      ${p.fs !== "null" ? `<div class="meas-row"><span>Szél:</span><span class="meas-val">${parseFloat(p.fs).toFixed(1)}m/s${p.fsd !== "null" ? ' / ' + p.fsd + '°' : ''}</span></div>` : ""}
+      ${p.fx !== "null" ? `<div class="meas-row"><span>Széllökés:</span><span class="meas-val">${parseFloat(p.fx).toFixed(1)}m/s</span></div>` : ""}
+      ${p.p0 !== "null" ? `<div class="meas-row"><span>Légnyomás:</span><span class="meas-val">${parseFloat(p.p0).toFixed(1)}hPa</span></div>` : ""}
+      ${diffHtml}
+    `;
+  }
+
+  function buildGeoJSON() {
+    if (!_data) return { type:"FeatureCollection", features:[] };
+    return {
+      type: "FeatureCollection",
+      features: _data.stations.map(s => ({
+        type: "Feature",
+        geometry: { type:"Point", coordinates:[s.lon, s.lat] },
+        properties: {
+          ...s,
+          color: stationColor(s, _currentLayer),
+          label: layerLabel(_currentLayer, s[_currentLayer]),
+        },
+      })),
+    };
+  }
+
+  function updateMap() {
+    if (!_map?.getSource("stations")) return;
+    _map.getSource("stations").setData(buildGeoJSON());
+    document.getElementById("meas-legend").innerHTML = legendItems(_currentLayer)
+      .map(([c,l]) => `<div style="width:12px;height:12px;border-radius:50%;background:${c};flex-shrink:0;"></div><span>${l}</span>&nbsp;`)
+      .join("");
+  }
+
+  // ── Statisztikák ───────────────────────────────────────────────────────────
+  function updateStats() {
+    if (!_data) return;
+    const st = _data.stations;
+    const avg = (arr) => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
+    const vals = (key) => st.map(s=>s[key]).filter(v=>v!==null&&v!==undefined);
+
+    const tAvg  = avg(vals("t"));
+    const rhAvg = avg(vals("u"));
+    const rMax  = Math.max(...vals("r").concat(0));
+    const fsMax = Math.max(...vals("fs").concat(0));
+
+    document.getElementById("stat-grid").innerHTML = [
+      { label:"Átl. hőmérséklet", val: tAvg  !== null ? tAvg.toFixed(1)  : "—", unit:"°C",   sub: `${st.filter(s=>s.t!==null).length} állomás` },
+      { label:"Átl. páratartalom", val:rhAvg !== null ? Math.round(rhAvg) : "—", unit:"%",    sub: "" },
+      { label:"Max csapadék",      val: rMax.toFixed(1),                           unit:"mm",   sub:"egy órában" },
+      { label:"Max széllökés",     val: fsMax.toFixed(1),                          unit:"m/s",  sub:"" },
+      { label:"Aktív állomások",   val: _data.count,                               unit:"db",   sub:"" },
+    ].map(s => `
+      <div class="stat">
+        <div class="label">${s.label}</div>
+        <div><span class="val">${s.val}</span><span class="unit"> ${s.unit}</span></div>
+        <div class="delta" style="color:var(--text-dim);">${s.sub}</div>
+      </div>`).join("");
+  }
+
+  // ── DWD összehasonlítás ────────────────────────────────────────────────────
+  async function enrichWithDWD(stations) {
+    try {
+      const dwdOk = await isDWDAvailable().catch(() => false);
+      if (!dwdOk) return stations;
+      const locs = stations.map(s => ({ lat: s.lat, lon: s.lon }));
+      const series = await fetchWeatherBulkDWD(locs, 1);
+      return stations.map((s, i) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const row = series[i] ? (series[i].find(d => d.date === today) || series[i][0]) : null;
+        return { ...s, dwd_t: row?.tmean ?? null, dwd_rh: row?.rh_mean ?? null, dwd_r: row?.precip ?? null };
+      });
+    } catch { return stations; }
+  }
+
+  // ── Táblázat ───────────────────────────────────────────────────────────────
+  function updateTable() {
+    if (!_data) return;
+    const sorted = [..._data.stations].sort((a,b) => (b.t??-999)-(a.t??-999));
+    document.getElementById("station-tbody").innerHTML = sorted.map(s => {
+      const diff = s.dwd_t !== null && s.dwd_t !== undefined && s.t !== null
+        ? (s.t - s.dwd_t).toFixed(1) : null;
+      const diffCell = diff !== null
+        ? `<span style="color:${Math.abs(diff)>2?'#e05252':Math.abs(diff)>1?'#d4a017':'#4caf7d'}">${diff>0?'+':''}${diff}°C</span>`
+        : "—";
+      return `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:6px 12px;font-weight:500;color:var(--text-br);">${s.name}</td>
+        <td style="padding:6px 12px;font-family:var(--mono);">${s.t!==null ? s.t.toFixed(1) : '—'}</td>
+        <td style="padding:6px 12px;font-family:var(--mono);">${s.u!==null ? s.u : '—'}</td>
+        <td style="padding:6px 12px;font-family:var(--mono);">${s.r!==null ? s.r.toFixed(1) : '—'}</td>
+        <td style="padding:6px 12px;font-family:var(--mono);">${s.fs!==null ? s.fs.toFixed(1) : '—'}</td>
+        <td style="padding:6px 12px;font-family:var(--mono);">${diffCell}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  // ── Betöltés ───────────────────────────────────────────────────────────────
+  async function loadData(force = false) {
+    const spinner = document.getElementById("spinner");
+    spinner.style.display = "block";
+    try {
+      const res = await fetch(OMSZ_URL + "?_=" + (force ? Date.now() : Math.floor(Date.now()/CACHE_TTL)));
+      _data = await res.json();
+      _data.stations = await enrichWithDWD(_data.stations);
+
+      // Időbélyeg
+      const obsTime = new Date(_data.obs_time);
+      document.getElementById("obs-time").textContent =
+        `mérés ideje: ${obsTime.toLocaleTimeString("hu-HU",{hour:"2-digit",minute:"2-digit"})} UTC`;
+
+      updateStats();
+      updateMap();
+      updateTable();
+    } catch(e) {
+      document.getElementById("obs-time").textContent = "Betöltési hiba";
+      console.error("[omsz]", e);
+    } finally {
+      spinner.style.display = "none";
+    }
+  }
+
+  // ── CSV export ─────────────────────────────────────────────────────────────
+  function exportCsv() {
+    if (!_data) return;
+    const rows = [["Állomás","Lat","Lon","T(°C)","RH(%)","Csap(mm)","Szél(m/s)","DWD_T"]];
+    _data.stations.forEach(s => rows.push([s.name,s.lat,s.lon,s.t??'',s.u??'',s.r??'',s.fs??'',s.dwd_t??'']));
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([rows.map(r=>r.join(",")).join("\n")],{type:"text/csv"}));
+    a.download = `omsz_${new Date().toISOString().slice(0,16).replace("T","_")}.csv`;
+    a.click();
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  initMap();
+  loadData();
+
+  document.querySelectorAll(".layer-btn[data-mlayer]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".layer-btn[data-mlayer]").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      _currentLayer = btn.dataset.mlayer;
+      updateMap();
+    });
+  });
+
+  // Automatikus frissítés óránként
+  setInterval(() => loadData(true), CACHE_TTL);
+  </script>
+</body>
+</html>

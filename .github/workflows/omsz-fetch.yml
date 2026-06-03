@@ -1,0 +1,27 @@
+name: OMSZ mérések frissítés
+
+on:
+  schedule:
+    - cron: "12 * * * *"   # minden óra 12. percén (OMSZ ~10 perc késéssel publikál)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: OMSZ letöltés
+        run: python scripts/fetch_omsz.py
+      - name: Commit és push
+        run: |
+          git config user.name  "OMSZ Bot"
+          git config user.email "bot@notox.hu"
+          git add data/omsz_latest.json
+          git diff --staged --quiet \
+            && echo "Nincs változás." \
+            || (git commit -m "📡 OMSZ mérések $(date -u '+%Y-%m-%d %H:%M UTC')" && git push)
