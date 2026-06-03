@@ -134,12 +134,13 @@
             <div>
               <div style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">📡 Adatforrás</div>
               <p style="font-size:12px;color:var(--text-muted);line-height:1.7;margin:0;">
-                A térkép a <strong>DWD (Deutscher Wetterdienst) ICON-EU</strong> numerikus időjárás-modell adatait mutatja.
-                A modell Európa felett <strong>~7 km-es rácsban</strong> fut, naponta 8-szor frissül.
+                Alapértelmezetten az <strong>OMSZ AROME</strong> magyar modellt mutatja (~2,5 km, 2 nap),
+                amely a legrészletesebb hazai előrejelzés. Hosszabb kitekintéshez fent
+                a <strong>DWD ICON-EU</strong> (~7 km, 5 nap) modellre válthatsz.
                 Az adatokat a GitHub Actions tölti le 6 óránként és dolgozza fel.
               </p>
               <div style="margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--text-dim);">
-                Előrejelzési horizont: <strong>5 nap</strong> · Felbontás: <strong>0.0625° ≈ 7 km</strong>
+                AROME: 0,025° ≈ 2,5 km · 2 nap &nbsp;|&nbsp; DWD: 0,0625° ≈ 7 km · 5 nap
               </div>
             </div>
 
@@ -184,14 +185,13 @@
               </div>
             </div>
 
-            <!-- Kék keretes zónák -->
+            <!-- Modellek -->
             <div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">🟣 Kék keretes zónák</div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--green);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">🛰 Modellek</div>
               <p style="font-size:12px;color:var(--text-muted);line-height:1.7;margin:0;">
-                A lila keretes, sötétebb cellák a <strong>MATE campuszok körüli 7 km-es finomrács</strong> területei
-                (Gödöllő, Keszthely, Kaposvár, Szarvas, Szeged, Gyöngyös).
-                Ezek ugyanolyan DWD adatot mutatnak mint a többi cella —
-                a kiemelés csak az <strong>intézményi érdekeltségű területeket</strong> jelzi.
+                <strong>AROME 2,5 km</strong> — OMSZ magyar modell, a legrészletesebb, 2 napos előrejelzés.<br>
+                <strong>DWD ICON-EU 7 km</strong> — német modell, 5 napos kitekintés.<br>
+                Fent a <strong>Modell</strong> gombokkal válthatsz, a <strong>Nap</strong> gombokkal pedig az előrejelzett napok között.
               </p>
             </div>
 
@@ -352,30 +352,9 @@
             }
           }
           if (!include) continue;
-          cells.push({ latMin, latMax, lonMin, lonMax, centerLat, centerLon, isZone: false });
+          cells.push({ latMin, latMax, lonMin, lonMax, centerLat, centerLon });
         }
       }
-
-      // 2. Finom rács (7 km) az egyetemi zónák körül
-      //    A tömb végére kerül → drawGrid()-ben a durva cellák FÖLÉ rajzolódik → nincs hézag
-      UNIVERSITY_ZONES.forEach(zone => {
-        const snapLat = Math.round(zone.lat / ZONE_STEP) * ZONE_STEP;
-        const snapLon = Math.round(zone.lon / ZONE_STEP) * ZONE_STEP;
-        for (let di = -ZONE_RADIUS; di <= ZONE_RADIUS; di++) {
-          for (let dj = -ZONE_RADIUS; dj <= ZONE_RADIUS; dj++) {
-            const latMin = r(snapLat + di * ZONE_STEP);
-            const lonMin = r(snapLon + dj * ZONE_STEP);
-            const latMax = r(latMin + ZONE_STEP);
-            const lonMax = r(lonMin + ZONE_STEP);
-            cells.push({
-              latMin, latMax, lonMin, lonMax,
-              centerLat: r((latMin + latMax) / 2),
-              centerLon: r((lonMin + lonMax) / 2),
-              isZone: true, zoneName: zone.name,
-            });
-          }
-        }
-      });
 
       return cells;
     }
@@ -395,17 +374,6 @@
       { name: "Kaposvár",       lat: 46.3667, lon: 17.7967 },
     ];
 
-    // ── MATE egyetemi zónák — 7 km-es finom rács ─────────────────────────
-    const UNIVERSITY_ZONES = [
-      { name: "Gödöllő (MATE)",   lat: 47.597, lon: 19.363 },
-      { name: "Keszthely (MATE)", lat: 46.766, lon: 17.247 },
-      { name: "Kaposvár (MATE)",  lat: 46.374, lon: 17.796 },
-      { name: "Szarvas",          lat: 46.863, lon: 20.542 },
-      { name: "Szeged",           lat: 46.253, lon: 20.148 },
-      { name: "Gyöngyös (MATE)",  lat: 47.786, lon: 19.931 },
-    ];
-    const ZONE_STEP   = 0.0625; // ~7 km
-    const ZONE_RADIUS = 2;      // ±2 cella = ±0.125° ≈ 14 km sugár
 
     // ── Magyarország határpoligonja — OCHA/UNHCR COD-AB-HUN, ε=0.015° (~1.5 km) ──
     // Forrás: https://data.humdata.org/dataset/cod-ab-hun (CC BY-IGO)
@@ -580,8 +548,6 @@
               tmean:    d.tmean,    tmin:  d.tmin,  tmax: d.tmax,
               rh_mean:  d.rh_mean,  precip: d.precip,
               lat:      d.cell.centerLat, lon: d.cell.centerLon,
-              isZone:   !!d.cell.isZone,
-              zoneName: d.cell.zoneName || null,
             },
           })),
       };
@@ -607,19 +573,14 @@
     function addDataLayers() {
       const empty = { type: "FeatureCollection", features: [] };
 
-      // Rács — fill + zóna keret
+      // Rács — fill
       map.addSource("grid", { type: "geojson", data: empty });
       map.addLayer({
         id: "grid-fill", type: "fill", source: "grid",
         paint: {
           "fill-color":   colorExpr(currentLayer),
-          "fill-opacity": ["case", ["==", ["get","isZone"], true], 0.72, 0.45],
+          "fill-opacity": 0.5,
         },
-      });
-      map.addLayer({
-        id: "grid-zone-line", type: "line", source: "grid",
-        filter: ["==", ["get","isZone"], true],
-        paint: { "line-color": "rgba(167,139,250,0.6)", "line-width": 0.8 },
       });
 
       // Állomások
@@ -645,10 +606,8 @@
         if (!e.features.length) return;
         map.getCanvas().style.cursor = "crosshair";
         const p = e.features[0].properties;
-        const zl = p.isZone && p.zoneName
-          ? `<span style="color:#a78bfa;font-weight:700;">📍 ${p.zoneName}</span> · 7 km rács<br>` : "";
         _popup.setLngLat(e.lngLat).setHTML(
-          `${zl}<b>${p.lat?.toFixed(4)}°N ${p.lon?.toFixed(4)}°E</b><br>
+          `<b>${p.lat?.toFixed(4)}°N ${p.lon?.toFixed(4)}°E</b><br>
            Hőm.: ${p.tmean !== null ? Number(p.tmean).toFixed(1) : "—"} °C &nbsp;
            Párat.: ${p.rh_mean !== null ? Math.round(p.rh_mean) : "—"} %<br>
            Csapadék: ${p.precip !== null ? Number(p.precip).toFixed(1) : "—"} mm`
@@ -792,7 +751,7 @@
           document.getElementById("sub-model").textContent = "DWD ICON-EU · 7 km";
           document.getElementById("refresh-lbl").textContent = "DWD betöltés…";
           const [grid, stationSeries] = await Promise.all([
-            getDWDGridData(currentDay, UNIVERSITY_ZONES, ZONE_STEP, ZONE_RADIUS),
+            getDWDGridData(currentDay),
             fetchWeatherBulkDWD(stationLocs, 5),
           ]);
           gridData    = grid;
@@ -841,13 +800,8 @@
       const precips = gridData.filter(d => d.precip !== null).map(d => d.precip);
       const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
       document.getElementById("kpi-temp").textContent     = temps.length ? avg(temps).toFixed(1) : "—";
-      const zoneCells   = gridData.filter(d => d.cell.isZone).length;
-      const coarseCells = gridData.filter(d => !d.cell.isZone).length;
       const resLbl = currentModel === "arome" ? "2,5 km" : "7 km";
-      const stepLabel = gridData.some(d => d.cell.isZone)
-        ? `${zoneCells} zóna + ${coarseCells} alap`
-        : `${gridData.length} cella · ${resLbl}`;
-      document.getElementById("kpi-temp-lbl").textContent = stepLabel;
+      document.getElementById("kpi-temp-lbl").textContent = `${gridData.length} cella · ${resLbl}`;
       document.getElementById("kpi-rh").textContent       = rhs.length ? Math.round(avg(rhs)) : "—";
       const maxP = precips.length ? Math.max(...precips) : null;
       document.getElementById("kpi-precip").textContent   = maxP !== null ? maxP.toFixed(1) : "—";
