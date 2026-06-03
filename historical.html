@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>No-tox — Historikus elemző</title>
+  <script src="/js/theme-init.js"></script>
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+  <style>
+    #hist-map { height: 340px; }
+    .hist-controls { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+    .hist-controls .field { min-width:160px; }
+    .chart-box { height: 280px; position: relative; }
+    .layer-btn { padding:4px 10px; font-size:11px; border-radius:var(--radius); border:1px solid var(--border); background:transparent; color:var(--text-muted); cursor:pointer; font-family:var(--mono); }
+    .layer-btn.active { background:var(--green-soft); color:var(--green); border-color:var(--green-line); }
+  </style>
+</head>
+<body>
+  <main class="page-wrap">
+    <div class="page">
+
+      <div class="page-head">
+        <div>
+          <h1>Historikus elemző</h1>
+          <div class="sub">OMSZ mért napi adatok (2002–2025) · modellek visszamenőleges futtatása · <span id="hist-status">betöltés…</span></div>
+        </div>
+        <div class="right"><div class="spinner" id="spinner" style="display:none;"></div></div>
+      </div>
+
+      <!-- Vezérlők -->
+      <div class="card" style="margin-bottom:14px;">
+        <div style="padding:16px;">
+          <div class="hist-controls">
+            <div class="field">
+              <label for="sel-station">Állomás</label>
+              <select id="sel-station" style="width:100%;min-width:200px;"></select>
+            </div>
+            <div class="field">
+              <label for="sel-model">Betegségmodell</label>
+              <select id="sel-model" style="width:100%;"></select>
+            </div>
+            <div class="field" style="min-width:110px;">
+              <label for="sel-year-from">Évtől</label>
+              <select id="sel-year-from" style="width:100%;"></select>
+            </div>
+            <div class="field" style="min-width:110px;">
+              <label for="sel-year-to">Évig</label>
+              <select id="sel-year-to" style="width:100%;"></select>
+            </div>
+            <button class="btn btn-primary" id="btn-run" data-tip="A kiválasztott állomás historikus napi adatára lefuttatja a betegségmodellt">Elemzés</button>
+          </div>
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:8px;" id="station-meta"></div>
+        </div>
+      </div>
+
+      <!-- KPI -->
+      <div class="stats" id="hist-kpis" style="margin-bottom:14px;"></div>
+
+      <!-- Éves kritikus napok -->
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-h"><h3>Kritikus napok évente — trend</h3>
+          <div class="right"><span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);" id="trend-lbl"></span></div>
+        </div>
+        <div style="padding:16px;"><div class="chart-box"><canvas id="chart-yearly"></canvas></div></div>
+      </div>
+
+      <!-- Kiválasztott év napi kockázat -->
+      <div class="card" style="margin-bottom:14px;">
+        <div class="card-h"><h3>Napi kockázat — <span id="day-year-lbl">—</span></h3>
+          <div class="right" style="gap:6px;" id="year-buttons"></div>
+        </div>
+        <div style="padding:16px;"><div class="chart-box"><canvas id="chart-daily"></canvas></div></div>
+      </div>
+
+      <!-- Állomástérkép -->
+      <div class="card" style="overflow:hidden;">
+        <div class="card-h"><h3>Állomásválasztó térkép</h3>
+          <div class="right"><span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);">kattints egy állomásra</span></div>
+        </div>
+        <div id="hist-map"></div>
+      </div>
+
+    </div>
+  </main>
+
+  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/js/config.js"></script>
+  <script src="/js/shell.js"></script>
+  <script src="/js/historical.js"></script>
+  <script>
+  // ── Betegségmodellek (szinkronban app.js BUILTIN_MODELS-szel) ──────────────
+  const BUILTIN_MODELS = [
+    { id:"__dewolf2003",  name:"Fuzárium FHB (De Wolf 2003)", params:{ topt:22.5, sigma:6, rh_thr:60, precip_min:1, risk_thr:50 } },
+    { id:"__wolf1999",    name:"Fuzárium (Wolf 1999)",        params:{ topt:20, sigma:8, rh_thr:65, precip_min:2, risk_thr:40 } },
+    { id:"__coakley1988", name:"Sárgarozsda (Coakley 1988)",  params:{ topt:11, sigma:5, rh_thr:80, precip_min:0, risk_thr:30 } },
+    { id:"__madden1981",  name:"Levélrozsda (Madden 1981)",   params:{ topt:20, sigma:6, rh_thr:75, precip_min:0, risk_thr:35 } },
+    { id:"__pscheidt1993",name:"Lisztharmat (Pscheidt 1993)", params:{ topt:21, sigma:5, rh_thr:55, precip_min:0, risk_thr:40 } },
+    { id:"__afla_maize",  name:"Aflatoxin AFB1 (AFLA-maize)", params:{ type:"afla_maize", t_opt:30, t_sigma:6, rh_thr:60, rh_opt:80, stress_t:35, stress_rh:50, risk_thr:40 } },
+  ];
+  function loadAllModels() {
+    let custom = [];
+    try { custom = JSON.parse(localStorage.getItem("notox-models") || "[]"); } catch {}
+    return [...BUILTIN_MODELS, ...custom];
+  }
+  function runModelDay(params, tmean, rh, precip, tmax) {
+    if (tmean === null || rh === null) return 0;
+    if (params.type === "afla_maize") {
+      const tF = Math.exp(-0.5 * Math.pow((tmean-(params.t_opt??30))/(params.t_sigma??6), 2));
+      const rhF = rh >= (params.rh_opt??80) ? 1
+        : rh >= (params.rh_thr??60) ? (rh-(params.rh_thr??60))/((params.rh_opt??80)-(params.rh_thr??60)) : 0;
+      const effTmax = tmax ?? (tmean+5);
+      const stress = effTmax >= (params.stress_t??35) && rh < (params.stress_rh??50);
+      return Math.min(1, tF*rhF*(stress?1.5:1.0));
+    }
+    if (params.type === "linear_t") {
+      const dd = Math.max(0, tmean-(params.t_base??10));
+      const tF = Math.min(1, dd/(params.dd_max??15));
+      const rhF = rh >= (params.rh_thr??60) ? Math.min(1,(rh-(params.rh_thr??60))/(100-(params.rh_thr??60))) : 0;
+      return Math.min(1, tF*rhF);
+    }
+    const tF = Math.exp(-0.5 * Math.pow((tmean-params.topt)/params.sigma, 2));
+    const rhF = rh >= params.rh_thr ? (rh-params.rh_thr)/(100-params.rh_thr) : 0;
+    const pF = !params.precip_min ? 1 : (precip > 0 ? 1 - Math.exp(-precip/params.precip_min) : 0);
+    return Math.min(1, tF*rhF*pF);
+  }
+
+  // ── Állapot ────────────────────────────────────────────────────────────────
+  let _station = null;     // betöltött állomás (rows)
+  let _result  = null;     // { byYear: {year: {crit, avg, peak}}, daily: {year: [{date,risk}]} }
+  let _selYear = null;
+  let _chartYearly = null, _chartDaily = null;
+
+  function isLight() {
+    return document.documentElement.classList.contains("theme-light") ||
+           document.body?.classList.contains("theme-light");
+  }
+  function riskColor(v) {
+    if (v >= 75) return "#e05252"; if (v >= 50) return "#dc5a1e";
+    if (v >= 20) return "#d4a017"; return "#4caf7d";
+  }
+
+  // ── Modell futtatása a historikus napokon ──────────────────────────────────
+  function analyze() {
+    if (!_station) return;
+    const modelId = document.getElementById("sel-model").value;
+    const model = loadAllModels().find(m => m.id === modelId) || BUILTIN_MODELS[0];
+    const yFrom = +document.getElementById("sel-year-from").value;
+    const yTo   = +document.getElementById("sel-year-to").value;
+    const critThr = 75; // kritikus küszöb (0-100)
+
+    const byYear = {};   // year → {crit, sum, n, peakRisk, peakDate}
+    const daily  = {};   // year → [{date, risk}]
+
+    for (const r of _station.rows) {
+      const year = +r.date.slice(0, 4);
+      if (year < yFrom || year > yTo) continue;
+      const risk = Math.round(runModelDay(model.params, r.t, r.u, r.rau, r.tx) * 100);
+      if (!byYear[year]) byYear[year] = { crit:0, sum:0, n:0, peakRisk:-1, peakDate:null };
+      const y = byYear[year];
+      y.sum += risk; y.n++;
+      if (risk >= critThr) y.crit++;
+      if (risk > y.peakRisk) { y.peakRisk = risk; y.peakDate = r.date; }
+      (daily[year] = daily[year] || []).push({ date: r.date, risk });
+    }
+
+    _result = { byYear, daily, model, yFrom, yTo };
+    renderKPIs();
+    renderYearlyChart();
+    renderYearButtons();
+    const years = Object.keys(byYear).map(Number).sort();
+    _selYear = years[years.length - 1] || null;
+    renderDailyChart();
+  }
+
+  function renderKPIs() {
+    const years = Object.keys(_result.byYear).map(Number).sort();
+    if (!years.length) { document.getElementById("hist-kpis").innerHTML = ""; return; }
+    const crits = years.map(y => _result.byYear[y].crit);
+    const avgCrit = crits.reduce((a,b)=>a+b,0)/crits.length;
+    const worstYear = years[crits.indexOf(Math.max(...crits))];
+    const worstCrit = Math.max(...crits);
+
+    // Lineáris trend (kritikus napok / év meredeksége)
+    const n = years.length;
+    const mx = years.reduce((a,b)=>a+b,0)/n, my = avgCrit;
+    let num=0, den=0;
+    years.forEach((y,i)=>{ num += (y-mx)*(crits[i]-my); den += (y-mx)**2; });
+    const slope = den ? num/den : 0;
+    const trendTxt = slope > 0.3 ? `↗ +${slope.toFixed(1)} nap/év (növekvő)`
+                   : slope < -0.3 ? `↘ ${slope.toFixed(1)} nap/év (csökkenő)`
+                   : `→ stabil`;
+    document.getElementById("trend-lbl").textContent = trendTxt;
+
+    document.getElementById("hist-kpis").innerHTML = [
+      { label:"Átlag kritikus nap/év", val: avgCrit.toFixed(1), unit:"nap", tip:"A modell szerint évente átlagosan ennyi kritikus (≥75/100) kockázatú nap volt." },
+      { label:"Legrosszabb év", val: worstYear, unit:`· ${worstCrit} nap`, tip:"A legtöbb kritikus napot hozó év a vizsgált időszakban." },
+      { label:"Trend", val: (slope>0?"+":"")+slope.toFixed(1), unit:"nap/év", tip:"A kritikus napok számának éves változása (lineáris illesztés). Pozitív = romló helyzet." },
+      { label:"Vizsgált évek", val: n, unit:"év", tip:"Az elemzésbe vont évek száma." },
+    ].map(s => `<div class="stat" data-tip="${s.tip}">
+        <div class="label">${s.label}</div>
+        <div><span class="val">${s.val}</span><span class="unit"> ${s.unit}</span></div>
+      </div>`).join("");
+  }
+
+  function renderYearlyChart() {
+    const years = Object.keys(_result.byYear).map(Number).sort();
+    const crits = years.map(y => _result.byYear[y].crit);
+    const ctx = document.getElementById("chart-yearly");
+    if (_chartYearly) _chartYearly.destroy();
+    _chartYearly = new Chart(ctx, {
+      type: "bar",
+      data: { labels: years, datasets: [{
+        label: "Kritikus napok",
+        data: crits,
+        backgroundColor: crits.map(c => c >= 20 ? "#e05252" : c >= 10 ? "#dc5a1e" : "#4caf7d"),
+      }]},
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        onClick: (e, els) => { if (els.length) { _selYear = years[els[0].index]; renderDailyChart(); renderYearButtons(); } },
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.parsed.y} kritikus nap`}} },
+        scales:{
+          x:{ grid:{color:"rgba(128,128,128,.1)"}, ticks:{color:"#888",font:{size:9}} },
+          y:{ beginAtZero:true, grid:{color:"rgba(128,128,128,.1)"}, ticks:{color:"#888",font:{size:9}}, title:{display:true,text:"kritikus nap",color:"#888",font:{size:9}} },
+        },
+      },
+    });
+  }
+
+  function renderYearButtons() {
+    const years = Object.keys(_result.byYear).map(Number).sort().reverse();
+    document.getElementById("year-buttons").innerHTML = years.slice(0, 12).map(y =>
+      `<button class="layer-btn${y===_selYear?" active":""}" onclick="window._pickYear(${y})">${y}</button>`
+    ).join("");
+  }
+  window._pickYear = function(y) { _selYear = y; renderDailyChart(); renderYearButtons(); };
+
+  function renderDailyChart() {
+    if (!_selYear || !_result.daily[_selYear]) return;
+    document.getElementById("day-year-lbl").textContent = _selYear;
+    const rows = _result.daily[_selYear];
+    const ctx = document.getElementById("chart-daily");
+    if (_chartDaily) _chartDaily.destroy();
+    _chartDaily = new Chart(ctx, {
+      type: "line",
+      data: { labels: rows.map(r=>r.date.slice(5)), datasets:[{
+        label:"Napi kockázat",
+        data: rows.map(r=>r.risk),
+        borderColor:"#4caf7d", backgroundColor:"rgba(76,175,125,.12)",
+        borderWidth:1.5, pointRadius:0, fill:true, tension:0.2,
+      }]},
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{title:c=>_selYear+"-"+c[0].label, label:c=>`kockázat: ${c.parsed.y}/100`}} },
+        scales:{
+          x:{ grid:{display:false}, ticks:{color:"#888",font:{size:8},maxTicksLimit:12} },
+          y:{ min:0, max:100, grid:{color:"rgba(128,128,128,.1)"}, ticks:{color:"#888",font:{size:9}} },
+        },
+      },
+    });
+  }
+
+  // ── Állomás betöltése ───────────────────────────────────────────────────────
+  async function selectStation(id) {
+    const spinner = document.getElementById("spinner");
+    spinner.style.display = "block";
+    try {
+      _station = await loadHistStation(id);
+      document.getElementById("sel-station").value = id;
+      document.getElementById("station-meta").textContent =
+        `${_station.name} · ${_station.lat}°N ${_station.lon}°E · ${_station.elev} m · ${_station.rows.length} nap`;
+      // Évek frissítése a tényleges adatból
+      const years = [...new Set(_station.rows.map(r => +r.date.slice(0,4)))].sort();
+      const yf = document.getElementById("sel-year-from"), yt = document.getElementById("sel-year-to");
+      yf.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join("");
+      yt.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join("");
+      yf.value = years[0]; yt.value = years[years.length-1];
+      analyze();
+    } catch(e) {
+      document.getElementById("station-meta").textContent = "Hiba: " + e.message;
+      console.error(e);
+    } finally {
+      spinner.style.display = "none";
+    }
+  }
+
+  // ── Térkép ───────────────────────────────────────────────────────────────────
+  let _map = null;
+  function initMap(stations) {
+    _map = new maplibregl.Map({
+      container:"hist-map",
+      style: isLight() ? "https://tiles.openfreemap.org/styles/positron" : "https://tiles.openfreemap.org/styles/dark",
+      center:[19.5,47.15], zoom:6.4, attributionControl:false,
+    });
+    _map.addControl(new maplibregl.AttributionControl({compact:true}), "bottom-right");
+    _map.on("load", () => {
+      _map.addSource("st", { type:"geojson", generateId:true, data:{
+        type:"FeatureCollection",
+        features: stations.map(s => ({ type:"Feature", geometry:{type:"Point",coordinates:[s.lon,s.lat]}, properties:{id:s.id,name:s.name} })),
+      }});
+      _map.addLayer({ id:"st-c", type:"circle", source:"st",
+        paint:{ "circle-radius":4, "circle-color":"#4caf7d", "circle-stroke-color":"#0b0f0d", "circle-stroke-width":1 } });
+      const pop = new maplibregl.Popup({closeButton:false,closeOnClick:false});
+      _map.on("mousemove","st-c",e=>{ if(e.features.length){ _map.getCanvas().style.cursor="pointer"; pop.setLngLat(e.lngLat).setHTML(`<b>${e.features[0].properties.name}</b>`).addTo(_map);} });
+      _map.on("mouseleave","st-c",()=>{_map.getCanvas().style.cursor="";pop.remove();});
+      _map.on("click","st-c",e=>{ if(e.features.length) selectStation(e.features[0].properties.id); });
+    });
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  (async () => {
+    // Modell-dropdown
+    document.getElementById("sel-model").innerHTML =
+      loadAllModels().map(m=>`<option value="${m.id}">${m.name}</option>`).join("");
+    document.getElementById("btn-run").addEventListener("click", analyze);
+    document.getElementById("sel-model").addEventListener("change", () => { if(_station) analyze(); });
+    document.getElementById("sel-station").addEventListener("change", e => selectStation(+e.target.value));
+
+    try {
+      const idx = await loadHistIndex();
+      document.getElementById("hist-status").textContent = `${idx.count} állomás · 2002–2025`;
+      // Állomás-dropdown
+      document.getElementById("sel-station").innerHTML =
+        idx.stations.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
+      initMap(idx.stations);
+      // Alapból egy nagyobb állomás (Budapest ha van, különben első)
+      const bp = idx.stations.find(s => /budapest/i.test(s.name)) || idx.stations[0];
+      if (bp) selectStation(bp.id);
+    } catch(e) {
+      document.getElementById("hist-status").textContent = "Az adat még töltődik (GitHub Actions) — próbáld később.";
+      console.error(e);
+    }
+  })();
+  </script>
+</body>
+</html>

@@ -130,6 +130,7 @@ const NAV_ITEMS = [
   { href: "/forecast.html",    label: "Betegség-előrejelzés", icon: "chart", match: ["/forecast.html"] },
   { href: "/field.html",      label: "Táblaelemző",  icon: "field",     match: ["/field.html"] },
   { href: "/validation.html", label: "Validáció",    icon: "validate",  match: ["/validation.html"] },
+  { href: "/historical.html", label: "Historikus elemző", icon: "history", match: ["/historical.html"] },
   { href: "/sources.html",   label: "Forráselemzés", icon: "sources",  match: ["/sources.html"] },
 ];
 
@@ -143,6 +144,7 @@ const ICONS = {
   sources:   `<path d="M3 2h7l3 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z"/><path d="M10 2v3h3"/><line x1="5" y1="8" x2="11" y2="8"/><line x1="5" y1="11" x2="9" y2="11"/>`,
   field:     `<rect x="2" y="2" width="12" height="12" rx="1"/><path d="M2 6h12M2 10h12M6 2v12M10 2v12"/>`,
   measure:   `<circle cx="8" cy="8" r="2"/><path d="M8 2v2M8 12v2M2 8h2M12 8h2M4.1 4.1l1.4 1.4M10.5 10.5l1.4 1.4M4.1 11.9l1.4-1.4M10.5 5.5l1.4-1.4"/>`,
+  history:   `<path d="M8 4v4l3 2"/><path d="M2.5 8a5.5 5.5 0 1 1 1.6 3.9"/><path d="M2 8H4M2.5 11l1.6.9"/>`,
   admin:     `<circle cx="8" cy="8" r="2"/><path d="M8 1.5v1M8 13.5v1M1.5 8h1M13.5 8h1M3.6 3.6l.7.7M11.7 11.7l.7.7M3.6 12.4l.7-.7M11.7 4.3l.7-.7"/>`,
   logout:    `<path d="M11 10l3-3-3-3M14 7H6M9 3H4a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h5"/>`,
   collapse:  `<path d="M10 3l-4 5 4 5"/>`,
