@@ -127,7 +127,7 @@ const NAV_ITEMS = [
   { href: "/meteo.html",        label: "Meteorológia", icon: "meteo",    match: ["/meteo.html"] },
   { href: "/measurements.html", label: "Mérések",      icon: "measure",  match: ["/measurements.html"] },
   { href: "/models.html",    label: "Modellek",     icon: "model",     match: ["/models.html", "/diseases.html"] },
-  { href: "/forecast.html",    label: "Előrejelzés",  icon: "chart",     match: ["/forecast.html"] },
+  { href: "/forecast.html",    label: "Betegség-előrejelzés", icon: "chart", match: ["/forecast.html"] },
   { href: "/field.html",      label: "Táblaelemző",  icon: "field",     match: ["/field.html"] },
   { href: "/validation.html", label: "Validáció",    icon: "validate",  match: ["/validation.html"] },
   { href: "/sources.html",   label: "Forráselemzés", icon: "sources",  match: ["/sources.html"] },
