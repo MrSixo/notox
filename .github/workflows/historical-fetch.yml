@@ -25,6 +25,11 @@ jobs:
           git config user.name  "Historikus Bot"
           git config user.email "bot@notox.hu"
           git add data/historical/
-          git diff --staged --quiet \
-            && echo "Nincs változás." \
-            || (git commit -m "📚 OMSZ historikus $(date -u '+%Y-%m-%d')" && git push)
+          if git diff --staged --quiet; then echo "Nincs változás."; exit 0; fi
+          git commit -m "📚 OMSZ historikus $(date -u '+%Y-%m-%d')"
+          # Rebase-retry: párhuzamos bot-push ütközés ellen
+          for i in 1 2 3 4 5; do
+            git pull --rebase --autostash origin main && git push && { echo "Push OK ($i)"; exit 0; }
+            echo "Push retry $i…"; sleep $((i*5))
+          done
+          echo "Push sikertelen 5 próbálkozás után"; exit 1

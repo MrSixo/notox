@@ -22,6 +22,9 @@ import gzip, io, json, re, sys, zipfile
 from pathlib import Path
 from urllib.request import urlopen, Request
 from urllib.error import HTTPError, URLError
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+WORKERS = 8  # párhuzamos letöltő szálak
 
 BASE = "https://odp.met.hu/climate/observations_hungary/daily/historical/"
 UA   = {"User-Agent": "No-tox/1.0 historical (github.com/MrSixo/notox)"}
@@ -114,72 +117,71 @@ def parse_zip(data: bytes):
     return meta, rows
 
 
+def process_station(sid, periods, out_dir):
+    """Egy állomás teljes feldolgozása → index-bejegyzés vagy None."""
+    all_rows = []
+    meta = None
+    for start, end, fname in periods:
+        data = fetch(BASE + fname)
+        m, rows = parse_zip(data)
+        if m and not meta:
+            meta = m
+        all_rows.extend(rows)
+
+    if not meta or not all_rows:
+        return None
+
+    seen = {}
+    for r in all_rows:
+        seen[r[0]] = r
+    rows_sorted = [seen[d] for d in sorted(seen)]
+
+    station = {
+        "id": meta["id"], "name": meta["name"], "lat": meta["lat"],
+        "lon": meta["lon"], "elev": meta["elev"],
+        "cols": ["date", "t", "tn", "tx", "u", "rau"],
+        "daily": rows_sorted,
+    }
+    path = out_dir / f"st_{meta['id']}.json.gz"
+    raw = json.dumps(station, separators=(",", ":"), ensure_ascii=False).encode()
+    with gzip.open(str(path), "wb", compresslevel=9) as f:
+        f.write(raw)
+
+    return {
+        "id": meta["id"], "name": meta["name"], "lat": meta["lat"],
+        "lon": meta["lon"], "elev": meta["elev"],
+        "start": rows_sorted[0][0], "end": rows_sorted[-1][0],
+        "days": len(rows_sorted),
+    }
+
+
 def main():
     out_dir = Path("data/historical")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     log("Állomáslista lekérése…")
     by_station = list_station_files()
-    log(f"  {len(by_station)} állomás")
+    log(f"  {len(by_station)} állomás · {WORKERS} párhuzamos szál")
 
     index = []
-    ok, fail = 0, 0
+    ok, fail, done = 0, 0, 0
+    total = len(by_station)
 
-    for n, (sid, periods) in enumerate(sorted(by_station.items())):
-        try:
-            all_rows = []
-            meta = None
-            for start, end, fname in periods:
-                data = fetch(BASE + fname)
-                m, rows = parse_zip(data)
-                if m and not meta:
-                    meta = m
-                all_rows.extend(rows)
-
-            if not meta or not all_rows:
+    with ThreadPoolExecutor(max_workers=WORKERS) as ex:
+        futures = { ex.submit(process_station, sid, periods, out_dir): sid
+                    for sid, periods in by_station.items() }
+        for fut in as_completed(futures):
+            sid = futures[fut]
+            done += 1
+            try:
+                entry = fut.result()
+                if entry: index.append(entry); ok += 1
+                else: fail += 1
+            except Exception as e:
                 fail += 1
-                continue
-
-            # dedup + rendezés dátum szerint
-            seen = {}
-            for r in all_rows:
-                seen[r[0]] = r
-            rows_sorted = [seen[d] for d in sorted(seen)]
-
-            station = {
-                "id":    meta["id"],
-                "name":  meta["name"],
-                "lat":   meta["lat"],
-                "lon":   meta["lon"],
-                "elev":  meta["elev"],
-                "cols":  ["date", "t", "tn", "tx", "u", "rau"],
-                "daily": rows_sorted,
-            }
-
-            # per-állomás gz mentés
-            path = out_dir / f"st_{meta['id']}.json.gz"
-            raw = json.dumps(station, separators=(",", ":"), ensure_ascii=False).encode()
-            with gzip.open(str(path), "wb", compresslevel=9) as f:
-                f.write(raw)
-
-            index.append({
-                "id":    meta["id"],
-                "name":  meta["name"],
-                "lat":   meta["lat"],
-                "lon":   meta["lon"],
-                "elev":  meta["elev"],
-                "start": rows_sorted[0][0],
-                "end":   rows_sorted[-1][0],
-                "days":  len(rows_sorted),
-            })
-            ok += 1
-
-            if (n + 1) % 25 == 0:
-                log(f"  {n+1}/{len(by_station)} — ok: {ok}, fail: {fail}")
-
-        except (HTTPError, URLError, Exception) as e:
-            fail += 1
-            log(f"  ⚠ {sid}: {e}")
+                log(f"  ⚠ {sid}: {e}")
+            if done % 50 == 0:
+                log(f"  {done}/{total} — ok: {ok}, fail: {fail}")
 
     # index.json
     index.sort(key=lambda s: s["name"])
