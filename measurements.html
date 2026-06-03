@@ -263,13 +263,13 @@
     const fsMax = Math.max(...vals("fs").concat(0));
 
     document.getElementById("stat-grid").innerHTML = [
-      { label:"Átl. hőmérséklet", val: tAvg  !== null ? tAvg.toFixed(1)  : "—", unit:"°C",   sub: `${st.filter(s=>s.t!==null).length} állomás` },
-      { label:"Átl. páratartalom", val:rhAvg !== null ? Math.round(rhAvg) : "—", unit:"%",    sub: "" },
-      { label:"Max csapadék",      val: rMax.toFixed(1),                           unit:"mm",   sub:"egy órában" },
-      { label:"Max széllökés",     val: fsMax.toFixed(1),                          unit:"m/s",  sub:"" },
-      { label:"Aktív állomások",   val: _data.count,                               unit:"db",   sub:"" },
+      { label:"Átl. hőmérséklet", val: tAvg  !== null ? tAvg.toFixed(1)  : "—", unit:"°C",   sub: `${st.filter(s=>s.t!==null).length} állomás`, tip:"Az összes aktív OMSZ automata állomás pillanatnyi hőmérsékletének átlaga." },
+      { label:"Átl. páratartalom", val:rhAvg !== null ? Math.round(rhAvg) : "—", unit:"%",    sub: "", tip:"Relatív páratartalom átlaga az összes aktív állomáson." },
+      { label:"Max csapadék",      val: rMax.toFixed(1),                           unit:"mm",   sub:"egy órában", tip:"Az elmúlt 1 óra maximális csapadékösszege egyetlen állomáson." },
+      { label:"Max széllökés",     val: fsMax.toFixed(1),                          unit:"m/s",  sub:"", tip:"A legerősebb széllökés az összes állomás közül. Viharos: >17 m/s." },
+      { label:"Aktív állomások",   val: _data.count,                               unit:"db",   sub:"", tip:"Érvényes hőmérsékletet vagy páratartalmat közlő automata állomások száma." },
     ].map(s => `
-      <div class="stat">
+      <div class="stat"${s.tip ? ` data-tip="${s.tip}"` : ''}>
         <div class="label">${s.label}</div>
         <div><span class="val">${s.val}</span><span class="unit"> ${s.unit}</span></div>
         <div class="delta" style="color:var(--text-dim);">${s.sub}</div>

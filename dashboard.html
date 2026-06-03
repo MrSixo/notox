@@ -193,9 +193,9 @@
 
       <!-- Summary bar -->
       <div class="summary-bar" id="summary-bar" style="display:none;">
-        <div class="summary-pill"><span class="dot" style="background:var(--red);"></span><span id="sum-crit">0</span> kritikus helyszín</div>
-        <div class="summary-pill"><span class="dot" style="background:var(--amber);"></span><span id="sum-med">0</span> közepes kockázat</div>
-        <div class="summary-pill"><span class="dot" style="background:var(--green);"></span><span id="sum-low">0</span> alacsony kockázat</div>
+        <div class="summary-pill" data-tip="Kritikus: kockázati index ≥ 75/100 — azonnali figyelmet igényel"><span class="dot" style="background:var(--red);"></span><span id="sum-crit">0</span> kritikus helyszín</div>
+        <div class="summary-pill" data-tip="Közepes: kockázati index 20–74 — fokozott megfigyelés javasolt"><span class="dot" style="background:var(--amber);"></span><span id="sum-med">0</span> közepes kockázat</div>
+        <div class="summary-pill" data-tip="Alacsony: kockázati index < 20 — jelenlegi időjárás nem kedvez a fertőzésnek"><span class="dot" style="background:var(--green);"></span><span id="sum-low">0</span> alacsony kockázat</div>
         <div class="summary-pill" style="margin-left:auto;border-color:transparent;background:transparent;color:var(--text-dim);" title="Forrás: DWD ICON-EU 7 km (GitHub Actions) · kockázatmodellek">
           <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 5.5v.5"/></svg>
           Forrás: Open-Meteo · <span id="sum-model">ICON-EU</span> &nbsp;·&nbsp; <span id="sum-updated">—</span>

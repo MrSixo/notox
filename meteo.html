@@ -75,17 +75,17 @@
 
       <div class="stats" style="margin-bottom:14px;">
         <div class="stat">
-          <div class="label"><span class="dot" style="background:var(--blue);"></span> Átl. hőmérséklet</div>
+          <div class="label" data-tip="Az összes rácscella napi átlaghőmérsékletének átlaga. Napi átlag = (Tmax+Tmin)/2."><span class="dot" style="background:var(--blue);"></span> Átl. hőmérséklet</div>
           <div><span class="val" id="kpi-temp">—</span><span class="unit">°C</span></div>
           <div class="delta" id="kpi-temp-lbl" style="color:var(--text-dim);">—</div>
         </div>
         <div class="stat">
-          <div class="label"><span class="dot" style="background:var(--green);"></span> Átl. páratartalom</div>
+          <div class="label" data-tip="Az összes rácscella napi relatív páratartalmának átlaga. 6 óránkénti minták alapján."><span class="dot" style="background:var(--green);"></span> Átl. páratartalom</div>
           <div><span class="val" id="kpi-rh">—</span><span class="unit">%</span></div>
           <div class="delta"></div>
         </div>
         <div class="stat">
-          <div class="label"><span class="dot" style="background:var(--blue);"></span> Max csapadék</div>
+          <div class="label" data-tip="Az ország legnagyobb napi csapadékösszege egyetlen 7km-es cellában. Napi összeg 00:00–24:00 UTC."><span class="dot" style="background:var(--blue);"></span> Max csapadék</div>
           <div><span class="val" id="kpi-precip">—</span><span class="unit">mm</span></div>
           <div class="delta" id="kpi-precip-lbl"></div>
         </div>
@@ -96,9 +96,9 @@
           <h3>Országtérkép — négyzetrácsos előrejelzés</h3>
           <div class="right" style="gap:6px;">
             <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-right:2px;">Réteg:</span>
-            <button class="layer-btn active" data-layer="temp">Hőmérséklet</button>
-            <button class="layer-btn" data-layer="rh">Páratartalom</button>
-            <button class="layer-btn" data-layer="precip">Csapadék</button>
+            <button class="layer-btn active" data-layer="temp" data-tip="Napi átlaghőmérséklet °C — (Tmax+Tmin)/2"  >Hőmérséklet</button>
+            <button class="layer-btn" data-layer="rh"    data-tip="Napi átlag relatív páratartalom % — 6 óránkénti minták átlaga">Páratartalom</button>
+            <button class="layer-btn" data-layer="precip" data-tip="Napi csapadékösszeg mm — 00:00–24:00 UTC felhalmozva">Csapadék</button>
           </div>
         </div>
         <div id="meteo-map"></div>
