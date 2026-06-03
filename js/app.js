@@ -24,108 +24,29 @@ const LINE_COLORS = [
   "#a78bfa", "#f97316", "#34d399", "#f43f5e",
 ];
 
-// ── Model registry ────────────────────────────────────────────────────────
-// Beépített modellek — szinkronban a models.html BUILTIN_MODELS-szel
-const BUILTIN_MODELS = [
-  { id: "__dewolf2003",  name: "Fuzárium kalász-rothadás (FHB)",           params: { topt: 22.5, sigma: 6, rh_thr: 60, precip_min: 1,   risk_thr: 50 } },
-  { id: "__wolf1999",    name: "Fuzárium (egyszerűsített logisztikus)",     params: { topt: 20,   sigma: 8, rh_thr: 65, precip_min: 2,   risk_thr: 40 } },
-  { id: "__coakley1988", name: "Sárgarozsda (stripe rust)",                 params: { topt: 11,   sigma: 5, rh_thr: 80, precip_min: 0,   risk_thr: 30 } },
-  { id: "__madden1981",  name: "Levélrozsda (leaf rust) — Madden",          params: { topt: 20,   sigma: 6, rh_thr: 75, precip_min: 0,   risk_thr: 35 } },
-  { id: "__pscheidt1993",name: "Lisztharmat (powdery mildew)",              params: { topt: 21,   sigma: 5, rh_thr: 55, precip_min: 0,   risk_thr: 40 } },
-  // AFLA-maize: Aspergillus flavus / AFB1 kukoricán
-  // Forrás: Balková et al. 2026 (AFLA-maize), Molnár et al. 2023 (Debrecen)
-  { id: "__afla_maize",  name: "Aflatoxin AFB1 (AFLA-maize) — Kukorica",  params: {
-    type: "afla_maize",
-    t_opt:    30,   // °C — A. flavus növekedési optimum
-    t_sigma:   6,   // °C — hőmérsékleti görbe szélessége
-    rh_thr:   60,   // % — minimális RH fertőzéshez
-    rh_opt:   80,   // % — optimális RH
-    stress_t: 35,   // °C — hőstressz küszöb (T_max)
-    stress_rh: 50,  // % — szárazsági küszöb RH
-    afi_threshold: 95, // AFI küszöb: >95 → 50% esély EU-limit (5 μg/kg) túllépésére
-    risk_thr: 40,
-  }},
-];
-
-// Beépített + egyéni modellek (notox-models localStorage)
-function loadModels() {
-  let custom = [];
-  try { custom = JSON.parse(localStorage.getItem("notox-models") || "[]"); } catch {}
-  return [...BUILTIN_MODELS, ...custom];
-}
-
-// Generic risk calc — supports gaussian, linear_t, afla_maize formula types
-// tmax: opcionális 5. paraméter (DWD adatnál elérhető)
-function runModelDay(params, tmean, rh, precip, tmax) {
-  if (tmean === null || rh === null) return 0;
-
-  const formulaType = params.type || "gaussian";
-
-  // ── AFLA-maize: Aspergillus flavus / AFB1 (Balková 2026, Molnár 2023) ──
-  if (formulaType === "afla_maize") {
-    const tOpt    = params.t_opt    ?? 30;
-    const tSigma  = params.t_sigma  ?? 6;
-    const rhThr   = params.rh_thr   ?? 60;
-    const rhOpt   = params.rh_opt   ?? 80;
-
-    // 1. Hőmérsékleti faktor: Gauss-görbe, csúcs 30°C-on
-    const tFactor = Math.exp(-0.5 * Math.pow((tmean - tOpt) / tSigma, 2));
-
-    // 2. Páratartalmi faktor (60% alatt 0, 80% felett 1)
-    const rhFactor = rh >= rhOpt ? 1
-      : rh >= rhThr  ? (rh - rhThr) / (rhOpt - rhThr)
-      : 0;
-
-    // 3. Hőstressz-szárazsági szorzó (Molnár 2023: T_max≥35°C + RH<50% = legjobb predaktor)
-    //    tmax ha elérhető, különben tmean+5 közelítés
-    const effectiveTmax = tmax ?? (tmean + 5);
-    const heatDrought   = effectiveTmax >= (params.stress_t ?? 35) && rh < (params.stress_rh ?? 50);
-    const stressFactor  = heatDrought ? 1.5 : 1.0;
-
-    return Math.min(1, tFactor * rhFactor * stressFactor);
-  }
-
-  if (formulaType === "linear_t") {
-    // Lineáris hőfaktor (degree-day alapú)
-    const tBase  = params.t_base  ?? 10;
-    const ddMax  = params.dd_max  ?? 15;
-    const rhThr  = params.rh_thr  ?? 60;
-    const dd     = Math.max(0, tmean - tBase);
-    const tFactor  = Math.min(1, dd / ddMax);
-    const rhFactor = rh >= rhThr
-      ? Math.min(1, (rh - rhThr) / (100 - rhThr))
-      : 0;
-    return Math.min(1, tFactor * rhFactor);
-  }
-
-  // Gauss alapú (gaussian + logistic egyaránt)
-  const tFactor  = Math.exp(-0.5 * Math.pow((tmean - params.topt) / params.sigma, 2));
-  const rhFactor = rh >= params.rh_thr ? (rh - params.rh_thr) / (100 - params.rh_thr) : 0;
-  // precip_min === 0 → levéledfesség / harmat elég, csapadék nem feltétel (sárgarozsda, levélrozsda, lisztharmat)
-  const pFactor = !params.precip_min
-    ? 1
-    : (precip > 0 ? 1 - Math.exp(-precip / params.precip_min) : 0);
-  return Math.min(1, tFactor * rhFactor * pFactor);
-}
+// ── Model registry → js/disease-models.js (közös modul) ──
+// BUILTIN_MODELS, loadAllModels, getModel, runModelDay, computeDayRisks, normalizeForecast
 
 function simulateModel(model, weatherSeries) {
-  const daily = weatherSeries.map(d => {
-    const raw  = runModelDay(model.params, d.tmean, (d.rh_max ?? d.rh_mean), d.precip, d.tmax);
-    const risk = Math.round(raw * 100 * 10) / 10;
-    const rl   = riskLevel(risk);
-    return { date: d.date, risk, is_forecast: d.is_forecast, ...rl };
+  // Közös modul: modellenkénti RH-aggregátum + ablak-logika
+  const rows = weatherSeries.map(normalizeForecast);
+  const dayRisks = computeDayRisks(rows, model);
+  const daily = dayRisks.map((dr, i) => {
+    const rl = riskLevel(dr.risk);
+    return { date: dr.date, risk: dr.risk, is_forecast: weatherSeries[i]?.is_forecast ?? false, ...rl };
   });
   const risks = daily.map(d => d.risk);
   const maxRisk = Math.max(...risks, 0);
   const avgRisk = risks.length ? risks.reduce((a, b) => a + b, 0) / risks.length : 0;
-  const criticalDays = risks.filter(r => r >= 75).length;
+  const critThr = model.params.risk_thr ?? 50;
+  const criticalDays = risks.filter(r => r >= critThr).length;
   const peakIdx = risks.indexOf(maxRisk);
   return { daily, summary: { maxRisk, avgRisk, criticalDays, peakDay: daily[peakIdx]?.date ?? null, level: riskLevel(maxRisk) } };
 }
 
 // ── Disease checklist ──────────────────────────────────────────────────────
 function buildDiseaseChecks() {
-  const models = loadModels();
+  const models = loadAllModels();
   const container = document.getElementById("disease-checks");
   if (!container) return;
 
@@ -277,7 +198,7 @@ async function runForecast() {
     const today = new Date().toISOString().slice(0, 10);
     const forecast = weather.filter(d => d.date >= today);
 
-    const allModels = loadModels();
+    const allModels = loadAllModels();
     const activeModels = allModels.filter(m => selectedIds.includes(m.id));
 
     // Run simulation for each selected model

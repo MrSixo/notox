@@ -89,12 +89,22 @@ function computeDayRisks(rows, model) {
       return { date:r.date, risk: Math.round(runModelDay(p, r.tmean, rhAvg, r.precip, r.tmax) * 100) };
     });
 
-  if (cfg.mode === "window_trh")  // De Wolf: 10 napos gördülő TRH9010 → logisztikus
+  if (cfg.mode === "window_trh") {  // De Wolf: 10 napos gördülő TRH9010 → logisztikus
+    // Historikuson pontos (órás trh); előrejelzésen közelítés a napi max RH-ból.
     return rows.map((r, i) => {
-      const w = rows.slice(Math.max(0, i-(cfg.window-1)), i+1).map(x => x.trh).filter(v => v != null);
-      const trh = w.reduce((a,b)=>a+b,0);
+      const win = rows.slice(Math.max(0, i-(cfg.window-1)), i+1);
+      let trh = 0;
+      for (const x of win) {
+        if (x.trh != null) {
+          trh += x.trh;                                   // pontos (órás adat)
+        } else if (x.rh_max != null && x.rh_max >= 90 &&
+                   x.tmean != null && x.tmean >= 15 && x.tmean <= 30) {
+          trh += 6;                                       // közelítés: ~6h >90% RH aznap
+        }
+      }
       return { date:r.date, risk: Math.round(100 / (1 + Math.exp(-(trh - cfg.thr) / 20))) };
     });
+  }
 
   // fallback
   return rows.map(r => ({ date:r.date,

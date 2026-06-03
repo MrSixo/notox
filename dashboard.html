@@ -222,51 +222,13 @@
   <script src="/js/shell.js"></script>
   <script src="/js/openmeteo.js"></script>
   <script src="/js/dwd.js"></script>
+  <script src="/js/disease-models.js"></script>
   <script src="/js/fusarium.js"></script>
   <script>
     const STORAGE_KEY = "notox-locations";
 
-    // ── Modell-registry (szinkronban a models.html BUILTIN_MODELS-szel) ──────
-    const BUILTIN_MODELS = [
-      { id: "__dewolf2003",    name: "Fuzárium (De Wolf 2003)",   params: { topt: 22.5, sigma: 6, rh_thr: 60, precip_min: 1,   risk_thr: 50 } },
-      { id: "__wolf1999",      name: "Fuzárium (Wolf 1999)",      params: { topt: 20,   sigma: 8, rh_thr: 65, precip_min: 2,   risk_thr: 40 } },
-      { id: "__coakley1988",   name: "Sárgarozsda",               params: { topt: 11,   sigma: 5, rh_thr: 80, precip_min: 0,   risk_thr: 30 } },
-      { id: "__madden1981",    name: "Levélrozsda",               params: { topt: 20,   sigma: 6, rh_thr: 75, precip_min: 0,   risk_thr: 35 } },
-      { id: "__pscheidt1993",  name: "Lisztharmat",               params: { topt: 21,   sigma: 5, rh_thr: 55, precip_min: 0,   risk_thr: 40 } },
-      { id: "__afla_maize",    name: "Aflatoxin AFB1 (AFLA-maize)", params: { type: "afla_maize", t_opt: 30, t_sigma: 6, rh_thr: 60, rh_opt: 80, stress_t: 35, stress_rh: 50, afi_threshold: 95, risk_thr: 40 } },
-    ];
-    function loadAllModels() {
-      try {
-        const custom = JSON.parse(localStorage.getItem("notox-models") || "[]");
-        return [...BUILTIN_MODELS, ...custom];
-      } catch { return [...BUILTIN_MODELS]; }
-    }
-    function getModel(modelId) {
-      return loadAllModels().find(m => m.id === modelId) || BUILTIN_MODELS[0];
-    }
-    function runModelDay(params, tmean, rh, precip, tmax) {
-      if (tmean === null || rh === null) return 0;
-      if (params.type === "afla_maize") {
-        const tF = Math.exp(-0.5 * Math.pow((tmean - (params.t_opt ?? 30)) / (params.t_sigma ?? 6), 2));
-        const rhF = rh >= (params.rh_opt ?? 80) ? 1
-          : rh >= (params.rh_thr ?? 60) ? (rh - (params.rh_thr ?? 60)) / ((params.rh_opt ?? 80) - (params.rh_thr ?? 60))
-          : 0;
-        const effTmax = tmax ?? (tmean + 5);
-        const stress  = effTmax >= (params.stress_t ?? 35) && rh < (params.stress_rh ?? 50);
-        return Math.min(1, tF * rhF * (stress ? 1.5 : 1.0));
-      }
-      if (params.type === "linear_t") {
-        const dd = Math.max(0, tmean - (params.t_base ?? 10));
-        const tF = Math.min(1, dd / (params.dd_max ?? 15));
-        const rhF = rh >= (params.rh_thr ?? 60) ? Math.min(1, (rh - (params.rh_thr ?? 60)) / (100 - (params.rh_thr ?? 60))) : 0;
-        return Math.min(1, tF * rhF);
-      }
-      const tF  = Math.exp(-0.5 * Math.pow((tmean - params.topt) / params.sigma, 2));
-      const rhF = rh >= params.rh_thr ? (rh - params.rh_thr) / (100 - params.rh_thr) : 0;
-      // precip_min === 0 → levéledfesség elegendő, csapadék nem feltétel
-      const pF  = !params.precip_min ? 1 : ((precip ?? 0) > 0 ? 1 - Math.exp(-(precip ?? 0) / params.precip_min) : 0);
-      return Math.min(1, tF * rhF * pF);
-    }
+    // ── Modell-registry → js/disease-models.js (közös modul) ──────
+    // BUILTIN_MODELS, loadAllModels, getModel, computeDayRisks, riskForDate, normalizeForecast
 
     // Időjárás adat gyorsítótár — modellváltásnál nem kell újra fetchelni
     const _weatherCache = {};
@@ -321,7 +283,7 @@
 
       const model   = getModel(loc.modelId);
       const risk    = todayActual !== null
-        ? Math.round(runModelDay(model.params, todayActual.tmean, (todayActual.rh_max ?? todayActual.rh_mean), todayActual.precip, todayActual.tmax) * 100)
+        ? riskForDate((data || []).map(normalizeForecast), model, todayActual.date)
         : null;
       const rl      = risk !== null ? riskLevel(risk) : null;
 
@@ -457,7 +419,7 @@
         const todayStr = new Date().toISOString().slice(0, 10);
         const row = cached ? (cached.find(d => d.date === todayStr) || cached[cached.length - 1]) : null;
         const model = getModel(modelId);
-        _riskMap[locId] = row ? Math.round(runModelDay(model.params, row.tmean, (row.rh_max ?? row.rh_mean), row.precip, row.tmax) * 100) : null;
+        _riskMap[locId] = row ? riskForDate((cached || []).map(normalizeForecast), model, row.date) : null;
         updateSummary();
       }
     }
@@ -507,7 +469,7 @@
         const todayStr = new Date().toISOString().slice(0, 10);
         const row = data ? (data.find(d => d.date === todayStr) || data[data.length - 1]) : null;
         const model = getModel(loc.modelId);
-        _riskMap[loc.id] = row ? Math.round(runModelDay(model.params, row.tmean, (row.rh_max ?? row.rh_mean), row.precip, row.tmax) * 100) : null;
+        _riskMap[loc.id] = row ? riskForDate((data || []).map(normalizeForecast), model, row.date) : null;
         updateSummary();
       } catch {
         const el = document.getElementById(`w-${loc.id}`);

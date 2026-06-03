@@ -295,6 +295,7 @@
   <script src="/js/shell.js"></script>
   <script src="/js/openmeteo.js"></script>
   <script src="/js/dwd.js"></script>
+  <script src="/js/disease-models.js"></script>
   <script src="/js/audit.js"></script>
   <script>
   // ── Konstansok ─────────────────────────────────────────────────────────────
@@ -306,45 +307,11 @@
     soy:"Szójabab", other:"Egyéb", unknown:"Ismeretlen"
   };
 
-  // Beépített modellek (szinkronban app.js-sel)
-  const BUILTIN_MODELS = [
-    { id: "__dewolf2003",   name: "Fuzárium FHB",       color: "#4caf7d", params: { topt:22.5, sigma:6, rh_thr:60, precip_min:1,   risk_thr:50 } },
-    { id: "__wolf1999",     name: "Fuzárium (logiszt.)", color: "#5b9cf6", params: { topt:20,   sigma:8, rh_thr:65, precip_min:2,   risk_thr:40 } },
-    { id: "__coakley1988",  name: "Sárgarozsda",        color: "#d4a017", params: { topt:11,   sigma:5, rh_thr:80, precip_min:0,   risk_thr:30 } },
-    { id: "__afla_maize",   name: "Aflatoxin (AFLA-maize)", color: "#f97316", params: { type:"afla_maize", t_opt:30, t_sigma:6, rh_thr:60, rh_opt:80, stress_t:35, stress_rh:50, afi_threshold:95, risk_thr:40 } },
-    { id: "__madden1981",   name: "Levélrozsda",        color: "#e05252", params: { topt:20,   sigma:6, rh_thr:75, precip_min:0,   risk_thr:35 } },
-    { id: "__pscheidt1993", name: "Lisztharmat",        color: "#a78bfa", params: { topt:21,   sigma:5, rh_thr:55, precip_min:0,   risk_thr:40 } },
-  ];
-
-  function loadModels() {
-    let custom = [];
-    try { custom = JSON.parse(localStorage.getItem("notox-models") || "[]"); } catch {}
-    return [...BUILTIN_MODELS, ...custom];
-  }
-
-  function runModelDay(params, tmean, rh, precip, tmax) {
-    if (tmean === null || rh === null) return 0;
-    if (params.type === "afla_maize") {
-      const tF = Math.exp(-0.5 * Math.pow((tmean - (params.t_opt ?? 30)) / (params.t_sigma ?? 6), 2));
-      const rhF = rh >= (params.rh_opt ?? 80) ? 1
-        : rh >= (params.rh_thr ?? 60) ? (rh - (params.rh_thr ?? 60)) / ((params.rh_opt ?? 80) - (params.rh_thr ?? 60))
-        : 0;
-      const effTmax = tmax ?? (tmean + 5);
-      const stress  = effTmax >= (params.stress_t ?? 35) && rh < (params.stress_rh ?? 50);
-      return Math.min(1, tF * rhF * (stress ? 1.5 : 1.0));
-    }
-    if ((params.type || "gaussian") === "linear_t") {
-      const dd = Math.max(0, tmean - (params.t_base ?? 10));
-      const tf = Math.min(1, dd / (params.dd_max ?? 15));
-      const rf = rh >= (params.rh_thr ?? 60) ? Math.min(1, (rh - params.rh_thr) / (100 - params.rh_thr)) : 0;
-      return Math.min(1, tf * rf);
-    }
-    const tf = Math.exp(-0.5 * Math.pow((tmean - params.topt) / params.sigma, 2));
-    const rf = rh >= params.rh_thr ? (rh - params.rh_thr) / (100 - params.rh_thr) : 0;
-    // precip_min === 0 → levéledfesség / harmat elég, csapadék nem feltétel
-    const pf = !params.precip_min ? 1 : (precip > 0 ? 1 - Math.exp(-precip / params.precip_min) : 0);
-    return Math.min(1, tf * rf * pf);
-  }
+  // Modell-logika → js/disease-models.js (közös modul). Itt csak a megjelenítési színek.
+  const MODEL_COLORS = {
+    __dewolf2003:"#4caf7d", __wolf1999:"#5b9cf6", __coakley1988:"#d4a017",
+    __afla_maize:"#f97316", __madden1981:"#e05252", __pscheidt1993:"#a78bfa",
+  };
 
   function riskColor(v) {
     if (v >= 75) return "#e05252";
@@ -391,10 +358,11 @@
     const row = series ? (series.find(d => d.date === today) || series[0]) : null;
     if (!row) return null;
 
-    const models = loadModels();
+    const models = loadAllModels();
+    const rows = (series || []).map(normalizeForecast);
     const results = models.map(m => ({
-      id: m.id, name: m.name, color: m.color || "#4caf7d",
-      risk: Math.round(runModelDay(m.params, row.tmean, (row.rh_max ?? row.rh_mean), row.precip, row.tmax) * 100),
+      id: m.id, name: m.name, color: m.color || MODEL_COLORS[m.id] || "#4caf7d",
+      risk: riskForDate(rows, m, row.date),
     }));
     const cache = { results, row, source: row.source || (dwdOk ? "icon-eu-dwd" : "icon") };
     _riskCache[field.id] = cache;
