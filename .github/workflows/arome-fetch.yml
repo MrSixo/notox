@@ -1,0 +1,30 @@
+name: AROME 2.5km frissítés
+
+on:
+  schedule:
+    # AROME futási idők: 00, 06, 12, 18 UTC — OMSZ ~1-2h után publikál
+    - cron: "30 2,8,14,20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Függőségek
+        run: pip install netCDF4 xarray numpy requests shapely
+      - name: AROME letöltés és feldolgozás
+        run: python scripts/fetch_arome.py
+      - name: Commit és push
+        run: |
+          git config user.name  "AROME Bot"
+          git config user.email "bot@notox.hu"
+          git add data/arome_hungary.json
+          git diff --staged --quiet \
+            && echo "Nincs változás." \
+            || (git commit -m "🌦 AROME 2.5km $(date -u '+%Y-%m-%d %H:%M UTC')" && git push)

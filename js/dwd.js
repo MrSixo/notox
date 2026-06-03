@@ -1,10 +1,48 @@
-// DWD ICON-EU előre-feldolgozott JSON — No-tox frontend integráció
+// Időjárás előre-feldolgozott JSON — No-tox frontend integráció
+// Preferencia: AROME 2.5km (2 nap) > DWD ICON-EU 7km (5 nap)
 // Kompatibilis a fetchWeather() / fetchWeatherBulk() interfésszekkel
-//
-// BEÁLLÍTÁS: cseréld le az alábbi URL-t a saját GitHub Pages URL-edre
-// Formátum: https://[GITHUB_FELHASZNALONEV].github.io/notox/data/dwd_hungary.json
 
-const DWD_JSON_URL = "https://MrSixo.github.io/notox/data/dwd_hungary.json";
+const DWD_JSON_URL   = "https://MrSixo.github.io/notox/data/dwd_hungary.json";
+const AROME_JSON_URL = "https://MrSixo.github.io/notox/data/arome_hungary.json";
+
+// AROME cache
+let _aromeData  = null;
+let _aromeIndex = null;
+let _aromeTs    = 0;
+const AROME_CACHE_TTL = 30 * 60 * 1000;
+
+async function _loadAROME() {
+  if (_aromeData && Date.now() - _aromeTs < AROME_CACHE_TTL) return _aromeData;
+  const res = await fetch(AROME_JSON_URL);
+  if (!res.ok) throw new Error(`AROME JSON HTTP ${res.status}`);
+  _aromeData = await res.json();
+  _aromeTs   = Date.now();
+  _aromeIndex = {};
+  for (const c of _aromeData.grid) {
+    const key = `${c.lat.toFixed(3)}_${c.lon.toFixed(3)}`;
+    _aromeIndex[key] = c;
+  }
+  console.info(`[AROME] ${_aromeData.grid.length} cella · run: ${_aromeData.run}`);
+  return _aromeData;
+}
+
+function _snapAROME(lat, lon, step = 0.025) {
+  const r = v => Math.round(Math.round(v / step) * step * 1000) / 1000;
+  return { lat: r(lat), lon: r(lon) };
+}
+
+function _findAROMECell(lat, lon) {
+  const { lat: sLat, lon: sLon } = _snapAROME(lat, lon);
+  return _aromeIndex?.[`${sLat.toFixed(3)}_${sLon.toFixed(3)}`] ?? null;
+}
+
+async function isAROMEAvailable() {
+  try {
+    const data = await _loadAROME();
+    const fetchedAt = new Date(data.ts);
+    return (Date.now() - fetchedAt.getTime()) / 3600000 < 7; // 7h limit
+  } catch { return false; }
+}
 const DWD_CACHE_TTL = 30 * 60 * 1000; // 30 perc
 
 let _dwdData  = null;
