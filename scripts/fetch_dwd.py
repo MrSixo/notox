@@ -287,6 +287,7 @@ def build_json(run: str) -> dict:
                     rh_vals = [float(da.values[i, j]) for da in rh_by_day[d]]
                     rh     = round(float(np.mean(rh_vals))) if rh_vals else None
                     rh_max = round(float(np.max(rh_vals)))  if rh_vals else None
+                    rh_min = round(float(np.min(rh_vals)))  if rh_vals else None
 
                     step_to   = (d + 1) * 24
                     step_from = d * 24
@@ -304,6 +305,7 @@ def build_json(run: str) -> dict:
                         "tmean":       tm,
                         "rh_mean":     rh,
                         "rh_max":      rh_max,
+                        "rh_min":      rh_min,
                         "precip":      pr,
                         "is_forecast": days[d] >= today,
                         "source":      "icon-eu-dwd",

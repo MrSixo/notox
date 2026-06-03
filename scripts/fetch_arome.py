@@ -274,6 +274,7 @@ def main():
                         if np.isfinite(v): rh_vals.append(round(v * 100))  # 0-1 → 0-100%
                     rh     = round(sum(rh_vals)/len(rh_vals)) if rh_vals else None
                     rh_max = max(rh_vals) if rh_vals else None
+                    rh_min = min(rh_vals) if rh_vals else None
 
                     step_to   = (d + 1) * 24
                     step_from = d * 24
@@ -290,6 +291,7 @@ def main():
                         "tmean":       tm,
                         "rh_mean":     rh,
                         "rh_max":      rh_max,
+                        "rh_min":      rh_min,
                         "precip":      pr,
                         "is_forecast": days[d] >= today,
                         "source":      "arome-omsz",
