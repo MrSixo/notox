@@ -8,7 +8,8 @@ Magyarország területére vágja, és napi aggregált JSON-t generál.
 Változók (36 fájl, ~43 MB letöltés):
   - tmax_2m  : napi max hőmérséklet [K → °C]   — steps 24,48,72,96,120
   - tmin_2m  : napi min hőmérséklet [K → °C]   — steps 24,48,72,96,120
-  - relhum_2m: relatív páratartalom [%]          — steps 6,12,...,120 (6h)
+  - relhum_2m: relatív páratartalom [%]          — steps 1h (0-78h) + 3h (81-120h)
+               (sűrű mintavétel → napi rh_max/min/mean egyezik az órás Open-Meteóval)
   - tot_prec : felhalmozott csapadék [kg/m²=mm]  — steps 0,24,48,72,96,120
 
 Kimeneti formátum: data/dwd_hungary.json
@@ -28,6 +29,7 @@ from shapely.validation import make_valid
 import sys
 import tempfile
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -221,16 +223,25 @@ def build_json(run: str) -> dict:
         tmin = {d: open_clipped(download(run, "tmin_2m", (d + 1) * 24, tmp))
                 for d in range(5)}
 
-        # ── RH 6 óránként (4 minta/nap → napi átlag) ─────────────────────
-        log("\n[3/4] RH letöltése (6h lépések)…")
+        # ── RH sűrű mintavétel: 1h (0-78h) + 3h (81-120h) ────────────────
+        # Nap 0-2 teljes órás (24 minta/nap) → napi max/min/mean egyezik az
+        # órás Open-Meteóval; nap 3-4 a DWD 3h-s raszterén (8-12 minta/nap).
+        log("\n[3/4] RH letöltése (1h 0-78h, 3h utána, párhuzamosan)…")
+        rh_steps = [s for s in list(range(1, 79)) + list(range(81, 121, 3))
+                    if (s - 1) // 24 < 5]
+
+        def _fetch_rh(step):
+            try:
+                return step, open_clipped(download(run, "relhum_2m", step, tmp))
+            except Exception as e:
+                log(f"    ⚠ RH step={step} hiba: {e}")
+                return step, None
+
         rh_by_day = {d: [] for d in range(5)}
-        for step in range(6, 121, 6):
-            d = (step - 1) // 24
-            if d < 5:
-                try:
-                    rh_by_day[d].append(open_clipped(download(run, "relhum_2m", step, tmp)))
-                except Exception as e:
-                    log(f"    ⚠ RH step={step} hiba: {e}")
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for step, da in ex.map(_fetch_rh, rh_steps):
+                if da is not None:
+                    rh_by_day[(step - 1) // 24].append(da)
 
         # ── Felhalmozott csapadék (diff a napos határon) ──────────────────
         log("\n[4/4] Csapadék letöltése…")
