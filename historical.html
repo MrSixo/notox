@@ -23,7 +23,7 @@
       <div class="page-head">
         <div>
           <h1>Historikus elemző</h1>
-          <div class="sub">OMSZ mért napi adatok (2002–2025) · modellek napi <strong>max RH</strong> alapú futtatása · <span id="hist-status">betöltés…</span></div>
+          <div class="sub">OMSZ mért napi adatok (2002–2025) · modellek az <strong>eredeti publikáció</strong> szerinti RH-aggregátummal · <span id="hist-status">betöltés…</span></div>
         </div>
         <div class="right"><div class="spinner" id="spinner" style="display:none;"></div></div>
       </div>
@@ -127,6 +127,60 @@
     return Math.min(1, tF*rhF*pF);
   }
 
+  // ── Modellenkénti RH-aggregátum (az eredeti publikációk szerint) ────────────
+  const MODEL_CONFIG = {
+    // De Wolf 2003: TRH9010 = 15-30°C + RH≥90% órák száma 10 napos gördülő ablakban (küszöb 56h)
+    __dewolf2003:  { mode:"window_trh", window:10, thr:56, label:">90% RH órák, 10 nap (TRH9010)" },
+    // Wolf 1999: 7 napos RH-átlag
+    __wolf1999:    { mode:"mean7", label:"7 napos RH-átlag" },
+    // Coakley sárgarozsda: >80% RH csúcs → napi max RH
+    __coakley1988: { mode:"point", rh:"umax", label:"napi max RH" },
+    // Madden levélrozsda: levélnedvesség-időtartam → napi max RH közelítés
+    __madden1981:  { mode:"point", rh:"umax", label:"napi max RH (levélnedvesség)" },
+    // Pscheidt lisztharmat: közepes RH → napi átlag
+    __pscheidt1993:{ mode:"point", rh:"u",    label:"napi átlag RH" },
+    // AFLA-maize: Molnár 2023 — hőstressz (T_max) + SZÁRAZSÁG (RH_min), nem magas RH!
+    __afla_maize:  { mode:"afla", label:"hőstressz + szárazság (RH_min)" },
+  };
+
+  // AFLA-maize kockázat: Molnár 2023 — T_max≥35°C + RH_min≤40% = kritikus aflatoxin-stressz
+  function aflaRisk(r) {
+    if (r.tx == null || r.umin == null) return 0;
+    const tStress = Math.max(0, Math.min(1, (r.tx - 28) / (38 - 28)));   // 28→38 °C
+    const drought = Math.max(0, Math.min(1, (60 - r.umin) / (60 - 30))); // RH_min 60→30%
+    return Math.round(tStress * drought * 100);
+  }
+
+  // Napi kockázat előszámítása modell-típus szerint
+  function computeDayRisks(rows, model, cfg) {
+    if (cfg.mode === "afla")
+      return rows.map(r => ({ date:r.date, risk: aflaRisk(r) }));
+
+    if (cfg.mode === "point")
+      return rows.map(r => ({ date:r.date,
+        risk: Math.round(runModelDay(model.params, r.t, (r[cfg.rh] ?? r.u), r.rau, r.tx) * 100) }));
+
+    if (cfg.mode === "mean7")  // 7 napos mozgóátlag RH
+      return rows.map((r,i) => {
+        const w = rows.slice(Math.max(0,i-6), i+1).map(x=>x.u).filter(v=>v!=null);
+        const rhAvg = w.length ? w.reduce((a,b)=>a+b,0)/w.length : null;
+        return { date:r.date, risk: Math.round(runModelDay(model.params, r.t, rhAvg, r.rau, r.tx) * 100) };
+      });
+
+    if (cfg.mode === "window_trh")  // De Wolf: 10 napos gördülő TRH9010 → logisztikus
+      return rows.map((r,i) => {
+        const w = rows.slice(Math.max(0,i-(cfg.window-1)), i+1).map(x=>x.utrh).filter(v=>v!=null);
+        const trh = w.reduce((a,b)=>a+b,0);
+        // De Wolf kalibráció: 56h→~51%, 131h→~96%
+        const risk = Math.round(100 / (1 + Math.exp(-(trh - cfg.thr) / 20)));
+        return { date:r.date, risk };
+      });
+
+    // fallback
+    return rows.map(r => ({ date:r.date,
+      risk: Math.round(runModelDay(model.params, r.t, (r.umax ?? r.u), r.rau, r.tx) * 100) }));
+  }
+
   // ── Állapot ────────────────────────────────────────────────────────────────
   let _station = null;     // betöltött állomás (rows)
   let _result  = null;     // { byYear: {year: {crit, avg, peak}}, daily: {year: [{date,risk}]} }
@@ -155,21 +209,25 @@
     const byYear = {};   // year → {crit, sum, n, peakRisk, peakDate}
     const daily  = {};   // year → [{date, risk}]
 
-    for (const r of _station.rows) {
-      const year = +r.date.slice(0, 4);
-      if (year < yFrom || year > yTo) continue;
-      // RH: napi MAX (umax) a fertőzéshez releváns; fallback napi átlagra (u)
-      const rh = (r.umax ?? r.u);
-      const risk = Math.round(runModelDay(model.params, r.t, rh, r.rau, r.tx) * 100);
+    // Időszakra szűrt, dátum szerint rendezett sorok (ablak-modellekhez folytonos kell)
+    const rows = _station.rows.filter(r => { const y=+r.date.slice(0,4); return y>=yFrom && y<=yTo; });
+    const cfg = MODEL_CONFIG[model.id] || { mode:"point", rh:"umax" };
+
+    // Napi kockázat előszámítása modell-típus szerint → [{date, risk}]
+    const dayRisks = computeDayRisks(rows, model, cfg);
+
+    for (const dr of dayRisks) {
+      const year = +dr.date.slice(0, 4);
+      const risk = dr.risk;
       if (!byYear[year]) byYear[year] = { crit:0, sum:0, n:0, peakRisk:-1, peakDate:null };
       const y = byYear[year];
       y.sum += risk; y.n++;
       if (risk >= critThr) y.crit++;
-      if (risk > y.peakRisk) { y.peakRisk = risk; y.peakDate = r.date; }
-      (daily[year] = daily[year] || []).push({ date: r.date, risk });
+      if (risk > y.peakRisk) { y.peakRisk = risk; y.peakDate = dr.date; }
+      (daily[year] = daily[year] || []).push({ date: dr.date, risk });
     }
 
-    _result = { byYear, daily, model, yFrom, yTo };
+    _result = { byYear, daily, model, yFrom, yTo, rhAggLabel: cfg.label };
     renderKPIs();
     renderYearlyChart();
     renderYearButtons();
@@ -195,7 +253,8 @@
     const trendTxt = slope > 0.3 ? `↗ +${slope.toFixed(1)} nap/év (növekvő)`
                    : slope < -0.3 ? `↘ ${slope.toFixed(1)} nap/év (csökkenő)`
                    : `→ stabil`;
-    document.getElementById("trend-lbl").textContent = trendTxt;
+    document.getElementById("trend-lbl").textContent =
+      (_result.rhAggLabel ? `RH: ${_result.rhAggLabel} · ` : "") + trendTxt;
 
     document.getElementById("hist-kpis").innerHTML = [
       { label:"Átlag kritikus nap/év", val: avgCrit.toFixed(1), unit:"nap", tip:`A modell szerint évente átlagosan ennyi kritikus (≥${_result.model.params.risk_thr ?? 50}/100) kockázatú nap volt.` },
