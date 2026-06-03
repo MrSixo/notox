@@ -272,8 +272,9 @@
     try {
       _station = await loadHistStation(id);
       document.getElementById("sel-station").value = id;
+      const firstY = _station.rows[0]?.date.slice(0,4), lastY = _station.rows[_station.rows.length-1]?.date.slice(0,4);
       document.getElementById("station-meta").textContent =
-        `${_station.name} · ${_station.lat}°N ${_station.lon}°E · ${_station.elev} m · ${_station.rows.length} nap`;
+        `${_station.name} · ${_station.lat}°N ${_station.lon}°E · ${_station.elev} m · mérés: ${firstY}–${lastY} · ${_station.rows.length} nap`;
       // Évek frissítése a tényleges adatból
       const years = [...new Set(_station.rows.map(r => +r.date.slice(0,4)))].sort();
       const yf = document.getElementById("sel-year-from"), yt = document.getElementById("sel-year-to");
@@ -301,12 +302,12 @@
     _map.on("load", () => {
       _map.addSource("st", { type:"geojson", generateId:true, data:{
         type:"FeatureCollection",
-        features: stations.map(s => ({ type:"Feature", geometry:{type:"Point",coordinates:[s.lon,s.lat]}, properties:{id:s.id,name:s.name} })),
+        features: stations.map(s => ({ type:"Feature", geometry:{type:"Point",coordinates:[s.lon,s.lat]}, properties:{ id:s.id, name:s.name, label:(window._histLabel ? window._histLabel(s) : s.name) } })),
       }});
       _map.addLayer({ id:"st-c", type:"circle", source:"st",
         paint:{ "circle-radius":4, "circle-color":"#4caf7d", "circle-stroke-color":"#0b0f0d", "circle-stroke-width":1 } });
       const pop = new maplibregl.Popup({closeButton:false,closeOnClick:false});
-      _map.on("mousemove","st-c",e=>{ if(e.features.length){ _map.getCanvas().style.cursor="pointer"; pop.setLngLat(e.lngLat).setHTML(`<b>${e.features[0].properties.name}</b>`).addTo(_map);} });
+      _map.on("mousemove","st-c",e=>{ if(e.features.length){ _map.getCanvas().style.cursor="pointer"; pop.setLngLat(e.lngLat).setHTML(`<b>${e.features[0].properties.label || e.features[0].properties.name}</b>`).addTo(_map);} });
       _map.on("mouseleave","st-c",()=>{_map.getCanvas().style.cursor="";pop.remove();});
       _map.on("click","st-c",e=>{ if(e.features.length) selectStation(e.features[0].properties.id); });
     });
@@ -324,9 +325,21 @@
     try {
       const idx = await loadHistIndex();
       document.getElementById("hist-status").textContent = `${idx.count} állomás · 2002–2025`;
+
+      // Időszak-címke: duplikált nevű állomásoknál évszámmal jelöljük (mettől-meddig mértek)
+      const nameCount = {};
+      idx.stations.forEach(s => { nameCount[s.name] = (nameCount[s.name] || 0) + 1; });
+      const curYear = new Date().getFullYear();
+      window._histLabel = (s) => {
+        if ((nameCount[s.name] || 0) <= 1) return s.name;
+        const y1 = s.start.slice(0, 4), y2 = s.end.slice(0, 4);
+        const ongoing = +y2 >= curYear - 1;     // tavaly/idén is mért → folyamatos
+        return ongoing ? `${s.name} (${y1}–)` : `${s.name} (${y1}–${y2})`;
+      };
+
       // Állomás-dropdown
       document.getElementById("sel-station").innerHTML =
-        idx.stations.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
+        idx.stations.map(s=>`<option value="${s.id}">${window._histLabel(s)}</option>`).join("");
       initMap(idx.stations);
       // Alapból egy nagyobb állomás (Budapest ha van, különben első)
       const bp = idx.stations.find(s => /budapest/i.test(s.name)) || idx.stations[0];
