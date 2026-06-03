@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# Soros futás minden adat-író workflow-val (közös group) → nincs push-verseny a main-en
+concurrency:
+  group: notox-data
+  cancel-in-progress: false
+
 jobs:
   fetch:
     runs-on: ubuntu-latest
