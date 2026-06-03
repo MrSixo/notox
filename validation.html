@@ -116,6 +116,20 @@
         </div>
       </div>
 
+      <!-- ── OMSZ vs DWD automatikus összehasonlítás ──────────────────────── -->
+      <div class="card" style="margin-bottom:14px;" id="omsz-comp-card">
+        <div class="card-h">
+          <h3>📡 Előrejelzés vs Mérés — automatikus összehasonlítás</h3>
+          <div class="right" style="gap:8px;">
+            <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim);" id="comp-ts">betöltés…</span>
+            <button class="btn btn-sm" onclick="loadComparison()">Frissítés</button>
+          </div>
+        </div>
+        <div id="comp-body" style="padding:16px;">
+          <div style="text-align:center;color:var(--text-dim);font-size:12px;padding:20px;">Betöltés…</div>
+        </div>
+      </div>
+
       <!-- ── Megfigyelés form ───────────────────────────────────────────── -->
       <div id="obs-form" class="card" style="display:none;margin-bottom:14px;">
         <div class="card-h">
@@ -406,6 +420,7 @@
   <script src="/js/config.js"></script>
   <script src="/js/shell.js"></script>
   <script src="/js/openmeteo.js"></script>
+  <script src="/js/dwd.js"></script>
   <script src="/js/fusarium.js"></script>
   <script src="/js/app.js"></script>
   <script>
@@ -979,6 +994,104 @@
     document.getElementById("val-model-sel").addEventListener("change", renderAll);
     document.getElementById("val-threshold").addEventListener("change", renderAll);
 
+    // ── OMSZ vs DWD automatikus összehasonlítás ───────────────────────────
+    async function loadComparison() {
+      const body = document.getElementById("comp-body");
+      const tsEl = document.getElementById("comp-ts");
+      body.innerHTML = '<div style="text-align:center;color:var(--text-dim);font-size:12px;padding:20px;">Betöltés…</div>';
+      try {
+        const [omszRes, dwdOk] = await Promise.all([
+          fetch("https://mrsixo.github.io/notox/data/omsz_latest.json"),
+          isDWDAvailable().catch(() => false),
+        ]);
+        if (!omszRes.ok) throw new Error("OMSZ JSON nem elérhető");
+        const omsz = await omszRes.json();
+
+        tsEl.textContent = `mérés: ${new Date(omsz.obs_time).toLocaleTimeString("hu-HU",{hour:"2-digit",minute:"2-digit"})} UTC`;
+
+        if (!dwdOk) {
+          body.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:12px;">DWD adat nem elérhető — az összehasonlítás csak akkor működik, ha a DWD JSON friss.</div>';
+          return;
+        }
+
+        // Minden OMSZ állomáshoz legközelebbi DWD cella
+        const locs = omsz.stations.map(s => ({ lat: s.lat, lon: s.lon }));
+        const dwdSeries = await fetchWeatherBulkDWD(locs, 1);
+        const today = new Date().toISOString().slice(0, 10);
+
+        const pairs = [];
+        omsz.stations.forEach((s, i) => {
+          const row = dwdSeries[i] ? (dwdSeries[i].find(d => d.date === today) || dwdSeries[i][0]) : null;
+          if (!row) return;
+          if (s.t !== null && row.tmean !== null)  pairs.push({ name:s.name, obs_t:s.t, dwd_t:row.tmean, var:"t" });
+          if (s.u !== null && row.rh_mean !== null) pairs.push({ name:s.name, obs_u:s.u, dwd_u:row.rh_mean, var:"u" });
+        });
+
+        const tPairs = pairs.filter(p => p.var === "t");
+        const uPairs = pairs.filter(p => p.var === "u");
+
+        function stats(obs, pred) {
+          const n = obs.length;
+          if (!n) return null;
+          const bias  = obs.reduce((s,v,i)=>s+(v-pred[i]),0)/n;
+          const rmse  = Math.sqrt(obs.reduce((s,v,i)=>s+(v-pred[i])**2,0)/n);
+          const mae   = obs.reduce((s,v,i)=>s+Math.abs(v-pred[i]),0)/n;
+          const r_num = obs.reduce((s,v,i)=>s+(v-obs.reduce((a,b)=>a+b)/n)*(pred[i]-pred.reduce((a,b)=>a+b)/n),0);
+          const r_den = Math.sqrt(obs.reduce((s,v)=>s+(v-obs.reduce((a,b)=>a+b)/n)**2,0)*pred.reduce((s,v)=>s+(v-pred.reduce((a,b)=>a+b)/n)**2,0));
+          return { n, bias:bias.toFixed(2), rmse:rmse.toFixed(2), mae:mae.toFixed(2), r:(r_den?r_num/r_den:0).toFixed(2) };
+        }
+
+        const tStat = stats(tPairs.map(p=>p.obs_t), tPairs.map(p=>p.dwd_t));
+        const uStat = stats(uPairs.map(p=>p.obs_u), uPairs.map(p=>p.dwd_u));
+
+        // Legrosszabb eltérések
+        const worst = [...tPairs].sort((a,b)=>Math.abs(b.obs_t-b.dwd_t)-Math.abs(a.obs_t-a.dwd_t)).slice(0,5);
+
+        function statBox(label, unit, st) {
+          if (!st) return '';
+          const biasColor = Math.abs(st.bias) > 2 ? '#e05252' : Math.abs(st.bias) > 1 ? '#d4a017' : '#4caf7d';
+          return `<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">${label} · ${st.n} állomás</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div><div style="font-size:9px;color:var(--text-dim);">BIAS</div><div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${biasColor};">${st.bias > 0 ? '+' : ''}${st.bias}${unit}</div><div style="font-size:9px;color:var(--text-dim);">modell−mérés átlag</div></div>
+              <div><div style="font-size:9px;color:var(--text-dim);">RMSE</div><div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--text-br);">${st.rmse}${unit}</div><div style="font-size:9px;color:var(--text-dim);">négyzetközép-hiba</div></div>
+              <div><div style="font-size:9px;color:var(--text-dim);">MAE</div><div style="font-family:var(--mono);font-size:16px;font-weight:600;color:var(--text-br);">${st.mae}${unit}</div></div>
+              <div><div style="font-size:9px;color:var(--text-dim);">R (korreláció)</div><div style="font-family:var(--mono);font-size:16px;font-weight:600;color:var(--text-br);">${st.r}</div></div>
+            </div>
+          </div>`;
+        }
+
+        body.innerHTML = `
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-bottom:16px;">
+            ${statBox("Hőmérséklet — DWD vs OMSZ","°C",tStat)}
+            ${statBox("Páratartalom — DWD vs OMSZ","%",uStat)}
+          </div>
+          <div>
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Legnagyobb hőmérsékleti eltérések</div>
+            <table style="width:100%;border-collapse:collapse;font-size:11px;">
+              <thead><tr style="border-bottom:1px solid var(--border);">
+                <th style="padding:6px 10px;text-align:left;color:var(--text-dim);font-weight:500;">Állomás</th>
+                <th style="padding:6px 10px;color:var(--text-dim);font-weight:500;">Mért (°C)</th>
+                <th style="padding:6px 10px;color:var(--text-dim);font-weight:500;">DWD (°C)</th>
+                <th style="padding:6px 10px;color:var(--text-dim);font-weight:500;">Eltérés</th>
+              </tr></thead>
+              <tbody>${worst.map(p=>{
+                const d=(p.obs_t-p.dwd_t).toFixed(1);
+                const c=Math.abs(p.obs_t-p.dwd_t)>2?'#e05252':Math.abs(p.obs_t-p.dwd_t)>1?'#d4a017':'#4caf7d';
+                return `<tr style="border-bottom:1px solid var(--border);">
+                  <td style="padding:6px 10px;color:var(--text-br);">${p.name}</td>
+                  <td style="padding:6px 10px;font-family:var(--mono);">${p.obs_t.toFixed(1)}</td>
+                  <td style="padding:6px 10px;font-family:var(--mono);">${p.dwd_t.toFixed(1)}</td>
+                  <td style="padding:6px 10px;font-family:var(--mono);color:${c};">${d>0?'+':''}${d}°C</td>
+                </tr>`;
+              }).join("")}</tbody>
+            </table>
+          </div>`;
+      } catch(e) {
+        body.innerHTML = `<div style="color:#e05252;font-size:11px;padding:12px;">Hiba: ${e.message}</div>`;
+      }
+    }
+
     // ── Init ──────────────────────────────────────────────────────────────
     document.addEventListener("DOMContentLoaded", () => {
       wireGeocoder("obs-geocode","btn-obs-geocode","obs-geocode-results","obs-name","obs-lat","obs-lon");
@@ -988,6 +1101,7 @@
       });
       buildModelSelector();
       renderAll();
+      loadComparison();
     });
   </script>
 </body>
