@@ -149,7 +149,8 @@
     const model = loadAllModels().find(m => m.id === modelId) || BUILTIN_MODELS[0];
     const yFrom = +document.getElementById("sel-year-from").value;
     const yTo   = +document.getElementById("sel-year-to").value;
-    const critThr = 75; // kritikus küszöb (0-100)
+    // Kritikus küszöb a modell saját riasztási szintje (risk_thr), különben 50
+    const critThr = model.params.risk_thr ?? 50;
 
     const byYear = {};   // year → {crit, sum, n, peakRisk, peakDate}
     const daily  = {};   // year → [{date, risk}]
@@ -195,7 +196,7 @@
     document.getElementById("trend-lbl").textContent = trendTxt;
 
     document.getElementById("hist-kpis").innerHTML = [
-      { label:"Átlag kritikus nap/év", val: avgCrit.toFixed(1), unit:"nap", tip:"A modell szerint évente átlagosan ennyi kritikus (≥75/100) kockázatú nap volt." },
+      { label:"Átlag kritikus nap/év", val: avgCrit.toFixed(1), unit:"nap", tip:`A modell szerint évente átlagosan ennyi kritikus (≥${_result.model.params.risk_thr ?? 50}/100) kockázatú nap volt.` },
       { label:"Legrosszabb év", val: worstYear, unit:`· ${worstCrit} nap`, tip:"A legtöbb kritikus napot hozó év a vizsgált időszakban." },
       { label:"Trend", val: (slope>0?"+":"")+slope.toFixed(1), unit:"nap/év", tip:"A kritikus napok számának éves változása (lineáris illesztés). Pozitív = romló helyzet." },
       { label:"Vizsgált évek", val: n, unit:"év", tip:"Az elemzésbe vont évek száma." },
