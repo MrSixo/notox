@@ -80,7 +80,6 @@
                 <th style="padding:7px 12px;font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;font-weight:500;">RH (%)</th>
                 <th style="padding:7px 12px;font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;font-weight:500;">Csap (mm)</th>
                 <th style="padding:7px 12px;font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;font-weight:500;">Szél (m/s)</th>
-                <th style="padding:7px 12px;font-family:var(--mono);font-size:9px;color:var(--text-dim);text-transform:uppercase;font-weight:500;">DWD T eltérés</th>
               </tr>
             </thead>
             <tbody id="station-tbody"></tbody>
@@ -95,11 +94,11 @@
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
   <script src="/js/config.js"></script>
   <script src="/js/shell.js"></script>
-  <script src="/js/dwd.js"></script>
+  <script src="/js/omsz.js"></script>
   <script>
   // ── Konfiguráció ───────────────────────────────────────────────────────────
-  const OMSZ_URL = "https://mrsixo.github.io/notox/data/omsz_latest.json";
-  const CACHE_TTL = 55 * 60 * 1000; // 55 perc
+  // OMSZ adatréteg: js/omsz.js (loadOMSZ, isOMSZAvailable)
+  const REFRESH_MS = 55 * 60 * 1000; // automatikus újratöltés óránként
 
   let _map = null;
   let _data = null;
@@ -205,12 +204,6 @@
   }
 
   function buildPopup(p) {
-    const dwd = p.dwd_t !== "null" && p.dwd_t !== null ? parseFloat(p.dwd_t) : null;
-    const t   = p.t !== "null" && p.t !== null ? parseFloat(p.t) : null;
-    const diff = (t !== null && dwd !== null) ? t - dwd : null;
-    const diffHtml = diff !== null
-      ? `<div class="meas-row"><span>DWD eltérés:</span><span class="meas-val meas-diff ${diff > 1.5 ? 'pos' : diff < -1.5 ? 'neg' : 'ok'}">${diff > 0 ? '+' : ''}${diff.toFixed(1)}°C</span></div>`
-      : "";
     return `
       <div class="meas-popup-title">${p.name}</div>
       <div style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-bottom:6px;">${parseFloat(p.lat).toFixed(4)}°N ${parseFloat(p.lon).toFixed(4)}°E · ${p.elev ? p.elev + 'm' : ''}</div>
@@ -221,7 +214,6 @@
       ${p.fs !== "null" ? `<div class="meas-row"><span>Szél:</span><span class="meas-val">${parseFloat(p.fs).toFixed(1)}m/s${p.fsd !== "null" ? ' / ' + p.fsd + '°' : ''}</span></div>` : ""}
       ${p.fx !== "null" ? `<div class="meas-row"><span>Széllökés:</span><span class="meas-val">${parseFloat(p.fx).toFixed(1)}m/s</span></div>` : ""}
       ${p.p0 !== "null" ? `<div class="meas-row"><span>Légnyomás:</span><span class="meas-val">${parseFloat(p.p0).toFixed(1)}hPa</span></div>` : ""}
-      ${diffHtml}
     `;
   }
 
@@ -275,40 +267,18 @@
       </div>`).join("");
   }
 
-  // ── DWD összehasonlítás ────────────────────────────────────────────────────
-  async function enrichWithDWD(stations) {
-    try {
-      const dwdOk = await isDWDAvailable().catch(() => false);
-      if (!dwdOk) return stations;
-      const locs = stations.map(s => ({ lat: s.lat, lon: s.lon }));
-      const series = await fetchWeatherBulkDWD(locs, 1);
-      return stations.map((s, i) => {
-        const today = new Date().toISOString().slice(0, 10);
-        const row = series[i] ? (series[i].find(d => d.date === today) || series[i][0]) : null;
-        return { ...s, dwd_t: row?.tmean ?? null, dwd_rh: row?.rh_mean ?? null, dwd_r: row?.precip ?? null };
-      });
-    } catch { return stations; }
-  }
-
   // ── Táblázat ───────────────────────────────────────────────────────────────
   function updateTable() {
     if (!_data) return;
     const sorted = [..._data.stations].sort((a,b) => (b.t??-999)-(a.t??-999));
-    document.getElementById("station-tbody").innerHTML = sorted.map(s => {
-      const diff = s.dwd_t !== null && s.dwd_t !== undefined && s.t !== null
-        ? (s.t - s.dwd_t).toFixed(1) : null;
-      const diffCell = diff !== null
-        ? `<span style="color:${Math.abs(diff)>2?'#e05252':Math.abs(diff)>1?'#d4a017':'#4caf7d'}">${diff>0?'+':''}${diff}°C</span>`
-        : "—";
-      return `<tr style="border-bottom:1px solid var(--border);">
+    document.getElementById("station-tbody").innerHTML = sorted.map(s => `
+      <tr style="border-bottom:1px solid var(--border);">
         <td style="padding:6px 12px;font-weight:500;color:var(--text-br);">${s.name}</td>
         <td style="padding:6px 12px;font-family:var(--mono);">${s.t!==null ? s.t.toFixed(1) : '—'}</td>
         <td style="padding:6px 12px;font-family:var(--mono);">${s.u!==null ? s.u : '—'}</td>
         <td style="padding:6px 12px;font-family:var(--mono);">${s.r!==null ? s.r.toFixed(1) : '—'}</td>
         <td style="padding:6px 12px;font-family:var(--mono);">${s.fs!==null ? s.fs.toFixed(1) : '—'}</td>
-        <td style="padding:6px 12px;font-family:var(--mono);">${diffCell}</td>
-      </tr>`;
-    }).join("");
+      </tr>`).join("");
   }
 
   // ── Betöltés ───────────────────────────────────────────────────────────────
@@ -316,29 +286,17 @@
     const spinner = document.getElementById("spinner");
     spinner.style.display = "block";
     try {
-      const res = await fetch(OMSZ_URL + "?_=" + (force ? Date.now() : Math.floor(Date.now()/CACHE_TTL)));
-      if (!res.ok) throw new Error("OMSZ JSON HTTP " + res.status);
-      _data = await res.json();
-
-      // 1) Azonnali megjelenítés az OMSZ mérésekből (DWD nélkül)
+      _data = await loadOMSZ(force);
       const obsTime = new Date(_data.obs_time);
       document.getElementById("obs-time").textContent =
         `mérés ideje: ${obsTime.toLocaleTimeString("hu-HU",{hour:"2-digit",minute:"2-digit"})} UTC`;
       updateStats();
       updateMap();
       updateTable();
-      spinner.style.display = "none";   // a fő tartalom kész
-
-      // 2) DWD összehasonlítás a háttérben — nem blokkolja a megjelenítést
-      enrichWithDWD(_data.stations).then(enriched => {
-        _data.stations = enriched;
-        updateMap();
-        updateTable();   // DWD eltérés oszlop frissül
-      }).catch(e => console.warn("[omsz] DWD enrich kihagyva:", e));
-
     } catch(e) {
       document.getElementById("obs-time").textContent = "Betöltési hiba — kattints a Frissítésre";
       console.error("[omsz]", e);
+    } finally {
       spinner.style.display = "none";
     }
   }
@@ -346,8 +304,8 @@
   // ── CSV export ─────────────────────────────────────────────────────────────
   function exportCsv() {
     if (!_data) return;
-    const rows = [["Állomás","Lat","Lon","T(°C)","RH(%)","Csap(mm)","Szél(m/s)","DWD_T"]];
-    _data.stations.forEach(s => rows.push([s.name,s.lat,s.lon,s.t??'',s.u??'',s.r??'',s.fs??'',s.dwd_t??'']));
+    const rows = [["Állomás","Lat","Lon","T(°C)","RH(%)","Csap(mm)","Szél(m/s)"]];
+    _data.stations.forEach(s => rows.push([s.name,s.lat,s.lon,s.t??'',s.u??'',s.r??'',s.fs??'']));
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([rows.map(r=>r.join(",")).join("\n")],{type:"text/csv"}));
     a.download = `omsz_${new Date().toISOString().slice(0,16).replace("T","_")}.csv`;
@@ -368,7 +326,7 @@
   });
 
   // Automatikus frissítés óránként
-  setInterval(() => loadData(true), CACHE_TTL);
+  setInterval(() => loadData(true), REFRESH_MS);
   </script>
 </body>
 </html>
