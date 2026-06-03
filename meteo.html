@@ -92,13 +92,26 @@
       </div>
 
       <div class="card" style="margin-bottom:14px;overflow:hidden;">
-        <div class="card-h">
+        <div class="card-h" style="flex-wrap:wrap;gap:8px;">
           <h3>Országtérkép — négyzetrácsos előrejelzés</h3>
-          <div class="right" style="gap:6px;">
-            <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-right:2px;">Réteg:</span>
-            <button class="layer-btn active" data-layer="temp" data-tip="Napi átlaghőmérséklet °C — (Tmax+Tmin)/2"  >Hőmérséklet</button>
-            <button class="layer-btn" data-layer="rh"    data-tip="Napi átlag relatív páratartalom % — 6 óránkénti minták átlaga">Páratartalom</button>
-            <button class="layer-btn" data-layer="precip" data-tip="Napi csapadékösszeg mm — 00:00–24:00 UTC felhalmozva">Csapadék</button>
+          <div class="right" style="gap:6px;flex-wrap:wrap;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);margin-right:2px;">Modell:</span>
+            <button class="layer-btn active" data-model="arome" data-tip="OMSZ AROME — 2,5 km felbontás, 2 napos előrejelzés. A legrészletesebb magyar modell.">AROME 2.5km</button>
+            <button class="layer-btn" data-model="dwd" data-tip="DWD ICON-EU — 7 km felbontás, 5 napos előrejelzés. Hosszabb kitekintés.">DWD 7km</button>
+          </div>
+        </div>
+        <!-- Réteg + nap választó sor -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+          padding:8px 16px;border-bottom:1px solid var(--border);">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);">Réteg:</span>
+            <button class="layer-btn active" data-layer="temp" data-tip="Napi átlaghőmérséklet °C — (Tmax+Tmin)/2">Hőmérséklet</button>
+            <button class="layer-btn" data-layer="rh"    data-tip="Napi átlag relatív páratartalom %">Páratartalom</button>
+            <button class="layer-btn" data-layer="precip" data-tip="Napi csapadékösszeg mm">Csapadék</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);">Nap:</span>
+            <div id="day-buttons" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
           </div>
         </div>
         <div id="meteo-map"></div>
@@ -487,6 +500,8 @@
 
     let map;
     let currentLayer = "temp";
+    let currentModel = "arome";  // alapértelmezett: AROME 2.5km
+    let currentDay   = null;     // null = ma; egyébként YYYY-MM-DD
     let gridData = [], stationData = [];
 
     // ── Legend ────────────────────────────────────────────────────────────
@@ -701,7 +716,7 @@
     // ── Fetch ─────────────────────────────────────────────────────────────
     function setSpinner(on) { document.getElementById("spinner").style.display = on ? "block" : "none"; }
 
-    const CACHE_KEY = () => `notox-meteo-grid-cache-${getGridStep()}`;
+    const CACHE_KEY = () => `notox-meteo-grid-${currentModel}-${currentDay || "today"}`;
     const CACHE_TTL = 5 * 60 * 1000; // 5 perc
 
     function saveCache(data) {
@@ -719,11 +734,11 @@
       } catch { return null; }
     }
 
-    // Egy pont napi adatát kivonja a bulk válaszból
-    function pickToday(series) {
+    // Egy pont adott napi adatát kivonja a bulk válaszból
+    function pickDay(series, dateStr) {
       if (!series) return { tmean: null, tmin: null, tmax: null, rh_mean: null, precip: null };
-      const today = new Date().toISOString().slice(0, 10);
-      const d = series.find(x => x.date === today) || series[series.length - 1];
+      const target = dateStr || new Date().toISOString().slice(0, 10);
+      const d = series.find(x => x.date === target) || series[0] || series[series.length - 1];
       return {
         tmean:   d?.tmean   ?? null,
         tmin:    d?.tmin    ?? null,
@@ -732,6 +747,7 @@
         precip:  d?.precip  ?? null,
       };
     }
+    function pickToday(series) { return pickDay(series, null); }
 
     async function loadAll(forceRefresh = false) {
       // Cache ellenőrzés
@@ -752,44 +768,52 @@
 
       setSpinner(true);
       document.getElementById("refresh-lbl").textContent = "betöltés…";
+      const stationLocs = STATIONS.map(s => ({ lat: s.lat, lon: s.lon }));
       try {
-        const cells       = buildGrid();
-        const cellLocs    = cells.map(c => ({ lat: c.centerLat, lon: c.centerLon }));
-        const stationLocs = STATIONS.map(s => ({ lat: s.lat, lon: s.lon }));
+        // Elérhetőség ellenőrzés — ha a választott modell nem él, fallback DWD-re
+        const aromeOk = await isAROMEAvailable().catch(() => false);
+        const dwdOk   = await isDWDAvailable().catch(() => false);
 
-        const dwdOk = await isDWDAvailable().catch(() => false);
+        let useModel = currentModel;
+        if (useModel === "arome" && !aromeOk) useModel = dwdOk ? "dwd" : "openmeteo";
+        if (useModel === "dwd"   && !dwdOk)   useModel = aromeOk ? "arome" : "openmeteo";
 
-        if (dwdOk) {
-          // ── DWD ICON-EU 7 km — rácsot a JSON-ból vesszük, nem generáljuk ─
+        if (useModel === "arome") {
+          document.getElementById("sub-model").textContent = "OMSZ AROME · 2,5 km";
+          document.getElementById("refresh-lbl").textContent = "AROME betöltés…";
+          const [grid, stationSeries] = await Promise.all([
+            getAROMEGridData(currentDay),
+            fetchWeatherBulkAROME(stationLocs, 2),
+          ]);
+          gridData    = grid;
+          stationData = STATIONS.map((st, i) => ({ station: st, ...pickDay(stationSeries[i], currentDay) }));
+
+        } else if (useModel === "dwd") {
           document.getElementById("sub-model").textContent = "DWD ICON-EU · 7 km";
-          document.getElementById("refresh-lbl").textContent = "DWD ICON-EU betöltés…";
-
-          const [dwdGrid, stationSeries] = await Promise.all([
-            getDWDGridData(5, UNIVERSITY_ZONES, ZONE_STEP, ZONE_RADIUS),
+          document.getElementById("refresh-lbl").textContent = "DWD betöltés…";
+          const [grid, stationSeries] = await Promise.all([
+            getDWDGridData(currentDay, UNIVERSITY_ZONES, ZONE_STEP, ZONE_RADIUS),
             fetchWeatherBulkDWD(stationLocs, 5),
           ]);
-          gridData    = dwdGrid;
-          stationData = STATIONS.map((st, i) => ({ station: st, ...pickToday(stationSeries[i]) }));
+          gridData    = grid;
+          stationData = STATIONS.map((st, i) => ({ station: st, ...pickDay(stationSeries[i], currentDay) }));
 
         } else {
-          // ── Fallback: Open-Meteo 0.25° (progresszív) ────────────────────
+          // ── Végső fallback: Open-Meteo 0.25° (csak ma) ──────────────────
           document.getElementById("sub-model").textContent = "Open-Meteo ICON-EU · 0.25°";
           document.getElementById("refresh-lbl").textContent = "Open-Meteo betöltés…";
-
+          const cells    = buildGrid();
+          const cellLocs = cells.map(c => ({ lat: c.centerLat, lon: c.centerLon }));
           const stationSeries = await fetchWeatherBulk(stationLocs, 1);
           stationData = STATIONS.map((st, i) => ({ station: st, ...pickToday(stationSeries[i]) }));
-
-          gridData = cells.map(cell => ({
-            cell, tmean: null, tmin: null, tmax: null, rh_mean: null, precip: null,
-          }));
+          gridData = cells.map(cell => ({ cell, tmean:null, tmin:null, tmax:null, rh_mean:null, precip:null }));
           await fetchWeatherBulk(cellLocs, 1, (results, done, total) => {
             results.forEach((series, i) => {
               if (series) gridData[i] = { cell: cells[i], ...pickToday(series) };
             });
-            drawGrid();
-            updateKPIs();
+            drawGrid(); updateKPIs();
             document.getElementById("refresh-lbl").textContent =
-              `Open-Meteo: ${done}/${total} csomag (${Math.round(done / total * 100)}%)…`;
+              `Open-Meteo: ${done}/${total} csomag (${Math.round(done/total*100)}%)…`;
           });
         }
 
@@ -799,8 +823,9 @@
         updateTable();
         updateKPIs();
         const loaded = gridData.filter(d => d.tmean !== null).length;
+        const dayLbl = currentDay ? ` · ${currentDay}` : "";
         document.getElementById("refresh-lbl").textContent =
-          `Frissítve: ${new Date().toLocaleTimeString("hu-HU")} · ${loaded} cella`;
+          `Frissítve: ${new Date().toLocaleTimeString("hu-HU")} · ${loaded} cella${dayLbl}`;
 
       } catch (err) {
         console.error("[loadAll] hiba:", err);
@@ -818,9 +843,10 @@
       document.getElementById("kpi-temp").textContent     = temps.length ? avg(temps).toFixed(1) : "—";
       const zoneCells   = gridData.filter(d => d.cell.isZone).length;
       const coarseCells = gridData.filter(d => !d.cell.isZone).length;
+      const resLbl = currentModel === "arome" ? "2,5 km" : "7 km";
       const stepLabel = gridData.some(d => d.cell.isZone)
         ? `${zoneCells} zóna + ${coarseCells} alap`
-        : `${gridData.length} cella · 7 km`;
+        : `${gridData.length} cella · ${resLbl}`;
       document.getElementById("kpi-temp-lbl").textContent = stepLabel;
       document.getElementById("kpi-rh").textContent       = rhs.length ? Math.round(avg(rhs)) : "—";
       const maxP = precips.length ? Math.max(...precips) : null;
@@ -1006,13 +1032,12 @@
         document.getElementById("st-geocode-results").style.display = "none";
     });
 
-    // ─────────────────────────────────────────────────────────────────────────
-    document.querySelectorAll(".layer-btn").forEach(btn => {
+    // ── Réteg-gombok (csak data-layer) — nincs újratöltés, csak színváltás ──
+    document.querySelectorAll(".layer-btn[data-layer]").forEach(btn => {
       btn.addEventListener("click", () => {
-        document.querySelectorAll(".layer-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".layer-btn[data-layer]").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
         currentLayer = btn.dataset.layer;
-        // MapLibre: csak a paint property frissül, nincs újrarajzolás
         if (map && map.getLayer("grid-fill")) {
           map.setPaintProperty("grid-fill", "fill-color", colorExpr(currentLayer));
         }
@@ -1020,10 +1045,63 @@
       });
     });
 
+    // ── Modell-gombok (data-model) — modellváltás → újratöltés ──
+    document.querySelectorAll(".layer-btn[data-model]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (btn.dataset.model === currentModel) return;
+        document.querySelectorAll(".layer-btn[data-model]").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        currentModel = btn.dataset.model;
+        currentDay   = null;          // új modell → első nap
+        await buildDayButtons();
+        loadAll(true);
+      });
+    });
+
+    // ── Nap-gombok dinamikus felépítése a választott modell napjaiból ──
+    async function buildDayButtons() {
+      const container = document.getElementById("day-buttons");
+      let days = [];
+      try {
+        days = currentModel === "arome" ? await getAROMEDays() : await getDWDDays();
+      } catch { days = []; }
+      if (!days.length) { container.innerHTML = ""; return; }
+      if (!currentDay || !days.includes(currentDay)) currentDay = days[0];
+
+      const today = new Date().toISOString().slice(0, 10);
+      const WD = ["vas","hét","ked","sze","csü","pén","szo"];
+      container.innerHTML = days.map(d => {
+        const dt = new Date(d + "T00:00:00");
+        const label = d === today ? "Ma" : `${WD[dt.getDay()]} ${dt.getDate()}.`;
+        const active = d === currentDay ? " active" : "";
+        return `<button class="layer-btn day-btn${active}" data-day="${d}" data-tip="${d} — előrejelzett nap">${label}</button>`;
+      }).join("");
+
+      container.querySelectorAll(".day-btn").forEach(b => {
+        b.addEventListener("click", () => {
+          container.querySelectorAll(".day-btn").forEach(x => x.classList.remove("active"));
+          b.classList.add("active");
+          currentDay = b.dataset.day;
+          loadAll(true);
+        });
+      });
+    }
+
     document.getElementById("btn-refresh").addEventListener("click", () => loadAll(true));
-    initMap();
-    loadAll();
-    renderStationGrid();
+
+    // ── Indítás: AROME ha elérhető, különben DWD ──
+    (async () => {
+      const aromeOk = await isAROMEAvailable().catch(() => false);
+      if (!aromeOk) {
+        currentModel = "dwd";
+        document.querySelector('.layer-btn[data-model="arome"]')?.classList.remove("active");
+        document.querySelector('.layer-btn[data-model="dwd"]')?.classList.add("active");
+      }
+      initMap();
+      await buildDayButtons();
+      loadAll();
+      renderStationGrid();
+    })();
   </script>
 </body>
 </html>

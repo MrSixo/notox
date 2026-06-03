@@ -109,21 +109,18 @@ async function fetchWeatherBulkDWD(locations, days = 5) {
 }
 
 /**
- * DWD rácscellák közvetlenül a JSON-ból — nincs nearest-neighbor keresés.
- * Visszatér a meteo.html gridData[] formátumban.
- * @param {number} days — max 5
- * @param {Array}  universityZones — [{name, lat, lon}] a zónajelöléshez (opcionális)
- * @param {number} zoneStep  — 0.0625
- * @param {number} zoneRadius — 2
- * @returns {Promise<Array>}
+ * Közös rács-építő — egy betöltött modell-JSON-ból + dátumból gridData[] tömb.
+ * @param {Object} data        — betöltött JSON ({step, grid, days})
+ * @param {string} dateStr     — kívánt nap (YYYY-MM-DD), vagy null = ma
+ * @param {Array}  universityZones — [{name, lat, lon}] zónajelöléshez (üres = nincs)
+ * @param {number} zoneStep
+ * @param {number} zoneRadius
  */
-async function getDWDGridData(days = 5, universityZones = [], zoneStep = 0.0625, zoneRadius = 2) {
-  const data = await _loadDWD();
+function _buildGridFromData(data, dateStr, universityZones = [], zoneStep = 0.0625, zoneRadius = 2) {
   const step = data.step || 0.0625;
   const half = step / 2;
-  const today = new Date().toISOString().slice(0, 10);
+  const target = dateStr || new Date().toISOString().slice(0, 10);
 
-  // Zóna-lookup: O(1) cella-szintű ellenőrzéshez
   const zoneR = zoneRadius * zoneStep;
   function isInZone(lat, lon) {
     for (const z of universityZones) {
@@ -134,9 +131,8 @@ async function getDWDGridData(days = 5, universityZones = [], zoneStep = 0.0625,
   }
 
   return data.grid.map(c => {
-    const dayData = c.days.slice(0, days);
-    const row = dayData.find(d => d.date === today) || dayData[0] || {};
-    const zoneName = isInZone(c.lat, c.lon);
+    const row = c.days.find(d => d.date === target) || c.days[0] || {};
+    const zoneName = universityZones.length ? isInZone(c.lat, c.lon) : null;
     return {
       cell: {
         latMin: Math.round((c.lat - half) * 100000) / 100000,
@@ -145,7 +141,7 @@ async function getDWDGridData(days = 5, universityZones = [], zoneStep = 0.0625,
         lonMax: Math.round((c.lon + half) * 100000) / 100000,
         centerLat: c.lat,
         centerLon: c.lon,
-        geom:     c.geom || null,  // határmenti cella levágott geometriája
+        geom:     c.geom || null,  // határmenti cella levágott geometriája (csak DWD)
         isZone:   !!zoneName,
         zoneName: zoneName || null,
       },
@@ -155,6 +151,41 @@ async function getDWDGridData(days = 5, universityZones = [], zoneStep = 0.0625,
       rh_mean: row.rh_mean ?? null,
       precip:  row.precip  ?? null,
     };
+  });
+}
+
+/**
+ * DWD rácscellák közvetlenül a JSON-ból egy adott napra.
+ * @param {string} dateStr — kívánt nap (YYYY-MM-DD), null = ma
+ * @param {Array}  universityZones
+ * @param {number} zoneStep
+ * @param {number} zoneRadius
+ */
+async function getDWDGridData(dateStr = null, universityZones = [], zoneStep = 0.0625, zoneRadius = 2) {
+  const data = await _loadDWD();
+  return _buildGridFromData(data, dateStr, universityZones, zoneStep, zoneRadius);
+}
+
+/**
+ * AROME 2.5km rácscellák egy adott napra.
+ * @param {string} dateStr — kívánt nap (YYYY-MM-DD), null = ma
+ */
+async function getAROMEGridData(dateStr = null) {
+  const data = await _loadAROME();
+  // AROME 2.5km — egyenletesen finom, nincs zónajelölés
+  return _buildGridFromData(data, dateStr, [], 0.025, 0);
+}
+
+/** Egy modell elérhető előrejelzési napjai (dátum-stringek tömbje). */
+async function getDWDDays()   { return (await _loadDWD()).days   || []; }
+async function getAROMEDays() { return (await _loadAROME()).days || []; }
+
+/** AROME bulk lekérés pontokra (nearest-neighbor) — pl. referencia-állomásokhoz. */
+async function fetchWeatherBulkAROME(locations, days = 2) {
+  await _loadAROME();
+  return locations.map(loc => {
+    const cell = _findAROMECell(loc.lat, loc.lon);
+    return cell ? cell.days.slice(0, days) : null;
   });
 }
 
