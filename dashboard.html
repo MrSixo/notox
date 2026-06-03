@@ -196,9 +196,9 @@
         <div class="summary-pill" data-tip="Kritikus: kockázati index ≥ 75/100 — azonnali figyelmet igényel"><span class="dot" style="background:var(--red);"></span><span id="sum-crit">0</span> kritikus helyszín</div>
         <div class="summary-pill" data-tip="Közepes: kockázati index 20–74 — fokozott megfigyelés javasolt"><span class="dot" style="background:var(--amber);"></span><span id="sum-med">0</span> közepes kockázat</div>
         <div class="summary-pill" data-tip="Alacsony: kockázati index < 20 — jelenlegi időjárás nem kedvez a fertőzésnek"><span class="dot" style="background:var(--green);"></span><span id="sum-low">0</span> alacsony kockázat</div>
-        <div class="summary-pill" style="margin-left:auto;border-color:transparent;background:transparent;color:var(--text-dim);" title="Forrás: DWD ICON-EU 7 km (GitHub Actions) · kockázatmodellek">
+        <div class="summary-pill" style="margin-left:auto;border-color:transparent;background:transparent;color:var(--text-dim);" data-tip="Az időjárás-modell kártyánként külön választható (AROME / DWD / Open-Meteo).">
           <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 7v4M8 5.5v.5"/></svg>
-          Forrás: Open-Meteo · <span id="sum-model">ICON-EU</span> &nbsp;·&nbsp; <span id="sum-updated">—</span>
+          Időjárás-modell: kártyánként választható &nbsp;·&nbsp; <span id="sum-updated">—</span>
         </div>
       </div>
 
@@ -328,20 +328,29 @@
       // Forrás-metaadatok
       const isForecast  = todayActual?.is_forecast ?? false;
       const dataDate    = todayActual?.date ?? "—";
-      const dataSource  = todayActual?.source === "icon-eu-dwd" ? "DWD ICON-EU · 7 km"
+      const dataSource  = todayActual?.source === "arome-omsz"  ? "AROME · 2,5 km"
+                        : todayActual?.source === "icon-eu-dwd" ? "DWD ICON-EU · 7 km"
                         : todayActual?.source === "ecmwf"       ? "ECMWF IFS"
-                        :                                         "ICON-EU";
+                        :                                         "Open-Meteo ICON-EU";
       const sourceLabel = isForecast ? `${dataSource} előrejelzés` : `${dataSource} mért`;
       const sourceColor = isForecast ? "var(--text-dim)" : "var(--green)";
       const verifyUrl   = buildVerifyUrl(loc.lat, loc.lon);
 
-      // Modell select opciók
+      // Betegség-modell select opciók
       const modelOpts = loadAllModels().map(m =>
         `<option value="${m.id}"${m.id === model.id ? " selected" : ""}>${m.name}</option>`
       ).join("");
 
+      // Időjárás-modell select opciók
+      const wxModel = loc.wxModel || "arome";
+      const wxOpts = [
+        ["arome",     "AROME 2,5 km"],
+        ["dwd",       "DWD 7 km"],
+        ["openmeteo", "Open-Meteo"],
+      ].map(([v, l]) => `<option value="${v}"${v === wxModel ? " selected" : ""}>${l}</option>`).join("");
+
       const formulaTitle = todayActual
-        ? `Modell: ${model.name}\nForrás: Open-Meteo · ${sourceLabel}\nDátum: ${dataDate}\nBemenők: Hőm ${todayActual.tmean !== null ? todayActual.tmean.toFixed(1) : "—"}°C · Párat ${todayActual.rh_mean !== null ? Math.round(todayActual.rh_mean) : "—"}% · Csap ${todayActual.precip !== null ? todayActual.precip.toFixed(1) : "—"}mm`
+        ? `Modell: ${model.name}\nForrás: ${sourceLabel}\nDátum: ${dataDate}\nBemenők: Hőm ${todayActual.tmean !== null ? todayActual.tmean.toFixed(1) : "—"}°C · Párat ${todayActual.rh_mean !== null ? Math.round(todayActual.rh_mean) : "—"}% · Csap ${todayActual.precip !== null ? todayActual.precip.toFixed(1) : "—"}mm`
         : "";
 
       return `<div class="loc-widget" id="w-${loc.id}">
@@ -407,10 +416,18 @@
           </div>
           <div class="risk-bar"><div class="risk-bar-fill" style="width:${risk}%;background:${riskColor(risk)};"></div></div>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;
           margin-top:8px;padding-top:7px;border-top:1px solid var(--border);">
-          <span style="font-family:var(--mono);font-size:9px;color:${sourceColor};">
-            ${dataDate} · ${sourceLabel}
+          <span style="display:flex;align-items:center;gap:4px;min-width:0;">
+            <span data-tip="Időjárás-modell kiválasztása ehhez a helyszínhez. AROME (OMSZ) 2,5 km a legpontosabb hazai."
+              style="font-family:var(--mono);font-size:9px;color:var(--text-dim);">🛰</span>
+            <select onchange="changeLocWxModel('${loc.id}', this.value)"
+              style="background:transparent;border:none;font-family:var(--mono);font-size:9px;
+                color:${sourceColor};cursor:pointer;padding:0;outline:none;
+                appearance:none;-webkit-appearance:none;max-width:96px;">
+              ${wxOpts}
+            </select>
+            <span style="font-family:var(--mono);font-size:9px;color:var(--text-dim);">${isForecast ? "előrejelzés" : "mért"}</span>
           </span>
           <a href="${verifyUrl}" target="_blank" rel="noopener"
             style="font-family:var(--mono);font-size:9px;color:var(--text-dim);
@@ -445,12 +462,44 @@
       }
     }
 
+    // Időjárás-modell váltása egy helyszínen → újratöltés
+    function changeLocWxModel(locId, wxModel) {
+      const locs = loadLocs();
+      const idx  = locs.findIndex(l => l.id === locId);
+      if (idx === -1) return;
+      locs[idx].wxModel = wxModel;
+      saveLocs(locs);
+      delete _weatherCache[locId];   // új modell → friss adat
+      fetchAndRender(locs[idx]);
+    }
+
+    // A helyszín kiválasztott időjárás-modelljéből tölt, fallback-lánccal
+    async function fetchWeatherForLoc(loc) {
+      const wx = loc.wxModel || "arome";
+      try {
+        if (wx === "arome" && await isAROMEAvailable().catch(() => false)) {
+          const s = await fetchWeatherBulkAROME([{ lat: loc.lat, lon: loc.lon }], 2);
+          if (s[0]) return s[0];
+        }
+        if (wx === "dwd" && await isDWDAvailable().catch(() => false)) {
+          return await fetchWeatherDWD(loc.lat, loc.lon, 5);
+        }
+        if (wx === "openmeteo") {
+          return await fetchWeather(loc.lat, loc.lon, 5);
+        }
+      } catch (e) { console.warn("[dashboard] wx modell hiba:", e); }
+      // Általános fallback: AROME → DWD → Open-Meteo
+      if (await isAROMEAvailable().catch(() => false)) {
+        const s = await fetchWeatherBulkAROME([{ lat: loc.lat, lon: loc.lon }], 2);
+        if (s[0]) return s[0];
+      }
+      if (await isDWDAvailable().catch(() => false)) return await fetchWeatherDWD(loc.lat, loc.lon, 5);
+      return await fetchWeather(loc.lat, loc.lon, 5);
+    }
+
     async function fetchAndRender(loc) {
       try {
-        const dwdOk = await isDWDAvailable().catch(() => false);
-        const data = dwdOk
-          ? await fetchWeatherDWD(loc.lat, loc.lon, 5)
-          : await fetchWeather(loc.lat, loc.lon, 5);
+        const data = await fetchWeatherForLoc(loc);
         _weatherCache[loc.id] = data;
         const el = document.getElementById(`w-${loc.id}`);
         if (el) el.outerHTML = renderWidget(loc, data);
@@ -511,12 +560,6 @@
         const now = new Date();
         document.getElementById("sum-updated").textContent =
           `frissítve ${now.toLocaleTimeString("hu-HU", { hour: "2-digit", minute: "2-digit" })}`;
-        isDWDAvailable().catch(() => false).then(ok => {
-          document.getElementById("sum-model").textContent = ok
-            ? "DWD ICON-EU · 7 km"
-            : (JSON.parse(localStorage.getItem("notox-settings-meteo") || "{}").weatherModel === "icon"
-                ? "ICON-EU" : "ECMWF IFS");
-        });
       }
     }
 
@@ -596,7 +639,7 @@
       const modelId = document.getElementById("inp-model").value || "__dewolf2003";
       if (!name || isNaN(lat) || isNaN(lon)) return;
       const locs = loadLocs();
-      locs.push({ id: genId(), name, lat, lon, modelId });
+      locs.push({ id: genId(), name, lat, lon, modelId, wxModel: "arome" });
       saveLocs(locs);
       closeForm();
       renderGrid();
