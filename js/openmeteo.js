@@ -42,6 +42,7 @@ function _parseIconDaily(daily, todayStr) {
       tmin:    tmin  ?? null,
       tmean:   tmax != null && tmin != null ? Math.round((tmax + tmin) / 2 * 10) / 10 : null,
       rh_mean: rhMax != null && rhMin != null ? Math.round((rhMax + rhMin) / 2) : null,
+      rh_max:  rhMax != null ? Math.round(rhMax) : null,
       precip:  daily.precipitation_sum[i] ?? 0,
       is_forecast: date >= todayStr,
       source: "icon",
@@ -197,12 +198,14 @@ function _aggregateEcmwfHourly(hourly, todayStr) {
       const tmin   = d.temps.length ? Math.min(...d.temps)                                  : null;
       const tmean  = d.temps.length ? d.temps.reduce((s, v) => s + v, 0) / d.temps.length  : null;
       const rh_raw = d.rhs.length   ? d.rhs.reduce((s, v) => s + v, 0)   / d.rhs.length    : null;
+      const rh_mx  = d.rhs.length   ? Math.max(...d.rhs)                                   : null;
       return {
         date,
         tmax:    tmax   !== null ? Math.round(tmax  * 10) / 10 : null,
         tmin:    tmin   !== null ? Math.round(tmin  * 10) / 10 : null,
         tmean:   tmean  !== null ? Math.round(tmean * 10) / 10 : null,
         rh_mean: rh_raw !== null ? Math.round(rh_raw)          : null,
+        rh_max:  rh_mx  !== null ? Math.round(rh_mx)           : null,
         precip:  Math.round(d.precip * 10) / 10,
         is_forecast: date >= todayStr,
         source: "ecmwf",

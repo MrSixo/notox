@@ -321,7 +321,7 @@
 
       const model   = getModel(loc.modelId);
       const risk    = todayActual !== null
-        ? Math.round(runModelDay(model.params, todayActual.tmean, todayActual.rh_mean, todayActual.precip, todayActual.tmax) * 100)
+        ? Math.round(runModelDay(model.params, todayActual.tmean, (todayActual.rh_max ?? todayActual.rh_mean), todayActual.precip, todayActual.tmax) * 100)
         : null;
       const rl      = risk !== null ? riskLevel(risk) : null;
 
@@ -457,7 +457,7 @@
         const todayStr = new Date().toISOString().slice(0, 10);
         const row = cached ? (cached.find(d => d.date === todayStr) || cached[cached.length - 1]) : null;
         const model = getModel(modelId);
-        _riskMap[locId] = row ? Math.round(runModelDay(model.params, row.tmean, row.rh_mean, row.precip, row.tmax) * 100) : null;
+        _riskMap[locId] = row ? Math.round(runModelDay(model.params, row.tmean, (row.rh_max ?? row.rh_mean), row.precip, row.tmax) * 100) : null;
         updateSummary();
       }
     }
@@ -507,7 +507,7 @@
         const todayStr = new Date().toISOString().slice(0, 10);
         const row = data ? (data.find(d => d.date === todayStr) || data[data.length - 1]) : null;
         const model = getModel(loc.modelId);
-        _riskMap[loc.id] = row ? Math.round(runModelDay(model.params, row.tmean, row.rh_mean, row.precip, row.tmax) * 100) : null;
+        _riskMap[loc.id] = row ? Math.round(runModelDay(model.params, row.tmean, (row.rh_max ?? row.rh_mean), row.precip, row.tmax) * 100) : null;
         updateSummary();
       } catch {
         const el = document.getElementById(`w-${loc.id}`);

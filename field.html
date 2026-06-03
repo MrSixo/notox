@@ -394,7 +394,7 @@
     const models = loadModels();
     const results = models.map(m => ({
       id: m.id, name: m.name, color: m.color || "#4caf7d",
-      risk: Math.round(runModelDay(m.params, row.tmean, row.rh_mean, row.precip, row.tmax) * 100),
+      risk: Math.round(runModelDay(m.params, row.tmean, (row.rh_max ?? row.rh_mean), row.precip, row.tmax) * 100),
     }));
     const cache = { results, row, source: row.source || (dwdOk ? "icon-eu-dwd" : "icon") };
     _riskCache[field.id] = cache;

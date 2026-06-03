@@ -272,7 +272,8 @@ def main():
                     for ds_rh in rh_by_day[d]:
                         v = float(ds_rh[get_var(ds_rh)].values[0, i, j])
                         if np.isfinite(v): rh_vals.append(round(v * 100))  # 0-1 → 0-100%
-                    rh = round(sum(rh_vals)/len(rh_vals)) if rh_vals else None
+                    rh     = round(sum(rh_vals)/len(rh_vals)) if rh_vals else None
+                    rh_max = max(rh_vals) if rh_vals else None
 
                     step_to   = (d + 1) * 24
                     step_from = d * 24
@@ -288,6 +289,7 @@ def main():
                         "tmin":        tn,
                         "tmean":       tm,
                         "rh_mean":     rh,
+                        "rh_max":      rh_max,
                         "precip":      pr,
                         "is_forecast": days[d] >= today,
                         "source":      "arome-omsz",

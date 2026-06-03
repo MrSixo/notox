@@ -110,7 +110,7 @@ function runModelDay(params, tmean, rh, precip, tmax) {
 
 function simulateModel(model, weatherSeries) {
   const daily = weatherSeries.map(d => {
-    const raw  = runModelDay(model.params, d.tmean, d.rh_mean, d.precip, d.tmax);
+    const raw  = runModelDay(model.params, d.tmean, (d.rh_max ?? d.rh_mean), d.precip, d.tmax);
     const risk = Math.round(raw * 100 * 10) / 10;
     const rl   = riskLevel(risk);
     return { date: d.date, risk, is_forecast: d.is_forecast, ...rl };
