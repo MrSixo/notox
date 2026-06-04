@@ -249,5 +249,54 @@ crudRoutes("fields");
 crudRoutes("locations");
 crudRoutes("models");
 
+// ── Admin: felhasználók kezelése (zárt kör jóváhagyás) ───────────────────────
+function requireAdmin(req, res, next) {
+  requireAuth(req, res, () => {
+    if (req.userRole !== "admin") return res.status(403).json({ error: "Admin jogosultság szükséges" });
+    next();
+  });
+}
+
+// GET /api/admin/users — összes felhasználó (jelszó-hash nélkül)
+app.get("/api/admin/users", requireAdmin, async (req, res) => {
+  try {
+    const r = await getPool().query(
+      "SELECT id, email, status, email_verified, role, created_at FROM users ORDER BY created_at DESC"
+    );
+    res.json(r.rows);
+  } catch (err) { console.error("admin users:", err); res.status(500).json({ error: "Szerverhiba" }); }
+});
+
+// PATCH /api/admin/users/:id — státusz és/vagy szerep módosítása
+app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
+  const { status, role } = req.body || {};
+  // Az admin ne lőhesse lábon magát.
+  if (req.params.id === req.userId && (status === "disabled" || role === "user"))
+    return res.status(400).json({ error: "Saját admin-fiókodat nem tilthatod le / fokozhatod le" });
+
+  const sets = [], vals = []; let i = 1;
+  if (status !== undefined) {
+    if (!["pending", "approved", "disabled"].includes(status))
+      return res.status(400).json({ error: "Érvénytelen státusz" });
+    sets.push(`status = $${i++}`); vals.push(status);
+  }
+  if (role !== undefined) {
+    if (!["user", "admin"].includes(role))
+      return res.status(400).json({ error: "Érvénytelen szerep" });
+    sets.push(`role = $${i++}`); vals.push(role);
+  }
+  if (!sets.length) return res.status(400).json({ error: "Nincs módosítandó mező" });
+  vals.push(req.params.id);
+  try {
+    const r = await getPool().query(
+      `UPDATE users SET ${sets.join(", ")}, updated_at = now()
+       WHERE id = $${i} RETURNING id, email, status, role, email_verified`,
+      vals
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: "Nem található" });
+    res.json(r.rows[0]);
+  } catch (err) { console.error("admin patch:", err); res.status(500).json({ error: "Szerverhiba" }); }
+});
+
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`notox-api Express listening on ${port}`));

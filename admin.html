@@ -154,7 +154,7 @@
         <p class="page-sub">API kulcsok · Meteorológia · Felhasználók · Rendszer
           <span class="info-pill" style="margin-left:8px;">
             <span style="width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;"></span>
-            Beállítások böngészőnként tárolódnak (localStorage)
+            API-kulcs és meteo-beállítás: böngészőnként (localStorage) · felhasználók és mentett adatok: szerveren
           </span>
         </p>
       </div>
@@ -443,69 +443,22 @@
         </div>
       </div>
 
-      <!-- Admin e-mailek -->
+      <!-- Felhasználók (backend, zárt kör) -->
       <div class="admin-card">
         <div class="admin-card-head">
-          <span>Admin e-mailek</span>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="admin-count">0 admin</span>
+          <span>Felhasználók</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="users-count">—</span>
         </div>
         <div class="admin-card-body">
           <p class="admin-card-note">
-            Az itt felsorolt e-mail-ekhez tartozó felhasználók látják az Admin menüpontot és kezelhetik
-            a beállításokat. Az első belépő automatikusan admin lesz (ha a lista üres).
+            Zárt kör: az új regisztrációk <strong>jóváhagyásra várnak</strong>. A „Jóváhagyás" engedélyezi a belépést,
+            a „Letiltás" visszavonja, az „Admin" admin-jogot ad. Saját fiókodat nem tilthatod le.
           </p>
-          <table class="user-table" id="admin-table">
+          <table class="user-table" id="users-table">
             <thead>
-              <tr><th>E-mail</th><th>Státusz</th><th></th></tr>
+              <tr><th>E-mail</th><th>Státusz</th><th>Szerep</th><th>Megerősítve</th><th>Művelet</th></tr>
             </thead>
-            <tbody id="admin-tbody"></tbody>
-          </table>
-          <div class="add-email-row">
-            <input type="email" class="form-input" id="new-admin-email" placeholder="pelda@szervezet.hu" />
-            <button class="btn btn-primary" onclick="addAdmin()">Admin hozzáadása</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Kutató e-mailek -->
-      <div class="admin-card">
-        <div class="admin-card-head">
-          <span>Kutató e-mailek</span>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)" id="researcher-count">0 kutató</span>
-        </div>
-        <div class="admin-card-body">
-          <p class="admin-card-note">
-            A kutatók hozzáférnek az összes adathoz és a Forráselemzés funkcióhoz, de az Admin
-            beállításokat nem módosíthatják. Az adminok automatikusan kutató jogosultsággal is rendelkeznek.
-          </p>
-          <table class="user-table" id="researcher-table">
-            <thead>
-              <tr><th>E-mail</th><th>Státusz</th><th></th></tr>
-            </thead>
-            <tbody id="researcher-tbody"></tbody>
-          </table>
-          <div class="add-email-row">
-            <input type="email" class="form-input" id="new-researcher-email" placeholder="pelda@szervezet.hu" />
-            <button class="btn btn-primary" onclick="addResearcher()">Kutató hozzáadása</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Belépési napló -->
-      <div class="admin-card">
-        <div class="admin-card-head">
-          <span>Belépési napló</span>
-          <button class="btn btn-sm" onclick="clearUserLog()">Törlés</button>
-        </div>
-        <div class="admin-card-body">
-          <p class="admin-card-note">
-            Az ezen a böngészőn bejelentkezett felhasználók listája (automatikusan gyűjtve).
-          </p>
-          <table class="user-table" id="user-log-table">
-            <thead>
-              <tr><th>Név</th><th>E-mail</th><th>Utolsó belépés</th><th>Szerep</th></tr>
-            </thead>
-            <tbody id="user-log-tbody"></tbody>
+            <tbody id="users-tbody"></tbody>
           </table>
         </div>
       </div>
@@ -870,152 +823,75 @@
     // ── Felhasználók tab ──────────────────────────────────────────
 
     function loadUsersTab(account) {
-      // Jelenlegi felhasználó
-      const isAdm = isAdminUser(account);
-      const isRes = isResearcher(account);
-      const roleClass = isAdm ? "role-admin" : isRes ? "role-researcher" : "role-user";
-      const roleLabel = isAdm ? "Admin" : isRes ? "Kutató" : "Felhasználó";
+      // Jelenlegi (bejelentkezett) felhasználó — a JWT-ből
+      const email = account.username || account.email || "—";
+      const role  = account.role || "user";
       document.getElementById("current-user-info").innerHTML = `
         <div style="display:flex;align-items:center;gap:12px;">
           <div style="width:36px;height:36px;border-radius:50%;background:var(--green-soft);border:1px solid var(--green-line);
             display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--green);">
-            ${(account.name || account.username || "?").split(/\s+/).map(s=>s[0]).slice(0,2).join("").toUpperCase()}
+            ${email.slice(0,2).toUpperCase()}
           </div>
           <div>
-            <div style="font-weight:600;font-size:13px;color:var(--text-br);">${account.name || account.username || "—"}</div>
-            <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);">${account.username || ""}</div>
+            <div style="font-weight:600;font-size:13px;color:var(--text-br);">${email}</div>
+            <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);">${role}</div>
           </div>
-          <span class="role-badge ${roleClass}">${roleLabel}</span>
+          <span class="role-badge ${role === 'admin' ? 'role-admin' : 'role-user'}">${role === 'admin' ? 'Admin' : 'Felhasználó'}</span>
         </div>`;
-
-      renderAdminList();
-      renderResearcherList();
-      renderUserLog();
+      loadUsers();
     }
 
-    function getAdmins() {
-      try { return JSON.parse(localStorage.getItem("notox-admins") || "[]"); } catch { return []; }
+    // ── Felhasználók a backendből (/api/admin/users) ──────────────────
+    function _adminHeaders() {
+      return { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("notox-token")}` };
     }
 
-    function renderAdminList() {
-      const admins = getAdmins();
-      document.getElementById("admin-count").textContent = admins.length + " admin";
-      const currentEmail = (window.__notoxAccount?.username || "").toLowerCase();
-      document.getElementById("admin-tbody").innerHTML = admins.length
-        ? admins.map(email => `
-            <tr>
-              <td style="font-family:var(--mono);font-size:11px;">${email}</td>
-              <td><span class="role-badge role-admin">Admin</span>
-                ${email === currentEmail ? '<span style="font-size:10px;color:var(--text-dim);margin-left:6px;">(te)</span>' : ""}
-              </td>
-              <td>
-                ${email !== currentEmail ? `<button class="btn btn-sm" onclick="removeAdmin('${email}')">Eltávolítás</button>` : ""}
-              </td>
-            </tr>`).join("")
-        : `<tr><td colspan="3" style="font-size:12px;color:var(--text-dim);padding:10px;">Nincs admin (localhost = mindenki admin)</td></tr>`;
-    }
-
-    function addAdmin() {
-      const email = document.getElementById("new-admin-email").value.trim().toLowerCase();
-      if (!email || !email.includes("@")) return;
-      const admins = getAdmins();
-      if (!admins.includes(email)) {
-        admins.push(email);
-        localStorage.setItem("notox-admins", JSON.stringify(admins));
-      }
-      document.getElementById("new-admin-email").value = "";
-      renderAdminList();
-    }
-
-    function removeAdmin(email) {
-      const admins = getAdmins().filter(e => e !== email);
-      localStorage.setItem("notox-admins", JSON.stringify(admins));
-      renderAdminList();
-    }
-
-    // ── Kutatók ───────────────────────────────────────────────────
-
-    function getResearchers() {
-      try { return JSON.parse(localStorage.getItem("notox-researchers") || "[]"); } catch { return []; }
-    }
-
-    function isResearcher(account) {
-      const host = window.location.hostname;
-      if (host === "localhost" || host === "127.0.0.1") return true;
-      if (isAdminUser(account)) return true; // admin = kutató is
-      const researchers = getResearchers();
-      const email = (account?.username || "").toLowerCase();
-      return researchers.includes(email);
-    }
-
-    function renderResearcherList() {
-      const researchers = getResearchers();
-      document.getElementById("researcher-count").textContent = researchers.length + " kutató";
-      const currentEmail = (window.__notoxAccount?.username || "").toLowerCase();
-      document.getElementById("researcher-tbody").innerHTML = researchers.length
-        ? researchers.map(email => `
-            <tr>
-              <td style="font-family:var(--mono);font-size:11px;">${email}</td>
-              <td><span class="role-badge role-researcher">Kutató</span>
-                ${email === currentEmail ? '<span style="font-size:10px;color:var(--text-dim);margin-left:6px;">(te)</span>' : ""}
-              </td>
-              <td>
-                <button class="btn btn-sm" onclick="removeResearcher('${email}')">Eltávolítás</button>
-              </td>
-            </tr>`).join("")
-        : `<tr><td colspan="3" style="font-size:12px;color:var(--text-dim);padding:10px;">Nincs kutató (localhost = mindenki hozzáfér)</td></tr>`;
-    }
-
-    function addResearcher() {
-      const email = document.getElementById("new-researcher-email").value.trim().toLowerCase();
-      if (!email || !email.includes("@")) return;
-      const researchers = getResearchers();
-      if (!researchers.includes(email)) {
-        researchers.push(email);
-        localStorage.setItem("notox-researchers", JSON.stringify(researchers));
-      }
-      document.getElementById("new-researcher-email").value = "";
-      renderResearcherList();
-    }
-
-    function removeResearcher(email) {
-      const researchers = getResearchers().filter(e => e !== email);
-      localStorage.setItem("notox-researchers", JSON.stringify(researchers));
-      renderResearcherList();
-    }
-
-    function renderUserLog() {
+    async function loadUsers() {
+      const tb = document.getElementById("users-tbody");
       try {
-        const log = JSON.parse(localStorage.getItem("notox-user-log") || "[]");
-        const admins = getAdmins();
-        const researchers = getResearchers();
-        const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-        document.getElementById("user-log-tbody").innerHTML = log.length
-          ? log.sort((a,b) => b.lastLogin.localeCompare(a.lastLogin)).map(u => {
-              const email = (u.email || "").toLowerCase();
-              const isAdm = isLocalhost || admins.includes(email);
-              const isRes = isLocalhost || isAdm || researchers.includes(email);
-              const roleClass = isAdm ? "role-admin" : isRes ? "role-researcher" : "role-user";
-              const roleLabel = isAdm ? "Admin" : isRes ? "Kutató" : "Felhasználó";
-              const dt = new Date(u.lastLogin);
-              const fmt = dt.toLocaleString("hu-HU", { year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" });
-              return `<tr>
-                <td>${u.name || "—"}</td>
-                <td style="font-family:var(--mono);font-size:11px;">${u.email}</td>
-                <td style="font-family:var(--mono);font-size:11px;color:var(--text-dim);">${fmt}</td>
-                <td><span class="role-badge ${roleClass}">${roleLabel}</span></td>
-              </tr>`;
-            }).join("")
-          : `<tr><td colspan="4" style="font-size:12px;color:var(--text-dim);padding:10px;">Nincs belépési rekord</td></tr>`;
+        const r = await fetch(`${NOTOX_CONFIG.apiBase}/api/admin/users`, { headers: _adminHeaders() });
+        if (!r.ok) { tb.innerHTML = `<tr><td colspan="5" style="padding:10px;color:var(--text-dim);">Hiba: ${r.status}</td></tr>`; return; }
+        const users = await r.json();
+        document.getElementById("users-count").textContent = `${users.length} felhasználó`;
+        tb.innerHTML = users.map(renderUserRow).join("");
       } catch {
-        document.getElementById("user-log-tbody").innerHTML = "";
+        tb.innerHTML = `<tr><td colspan="5" style="padding:10px;color:var(--text-dim);">Nem érhető el a szerver.</td></tr>`;
       }
     }
 
-    function clearUserLog() {
-      if (!confirm("Töröljük a belépési naplót?")) return;
-      localStorage.removeItem("notox-user-log");
-      renderUserLog();
+    function _statusBadge(s) {
+      const map = { pending: ["Jóváhagyásra vár","role-researcher"], approved: ["Jóváhagyva","role-admin"], disabled: ["Letiltva","role-user"] };
+      const [label, cls] = map[s] || [s, "role-user"];
+      return `<span class="role-badge ${cls}">${label}</span>`;
+    }
+
+    function renderUserRow(u) {
+      const me = JSON.parse(localStorage.getItem("notox-user") || "{}");
+      const isSelf = u.email === me.email;
+      const act = [];
+      if (u.status !== "approved") act.push(`<button class="btn btn-sm" onclick="setUserStatus('${u.id}','approved')">Jóváhagyás</button>`);
+      if (u.status !== "disabled" && !isSelf) act.push(`<button class="btn btn-sm" onclick="setUserStatus('${u.id}','disabled')">Letiltás</button>`);
+      if (u.role !== "admin") act.push(`<button class="btn btn-sm" onclick="setUserRole('${u.id}','admin')">Admin</button>`);
+      return `<tr>
+        <td style="font-family:var(--mono);font-size:11px;">${u.email}${isSelf ? ' <span style="color:var(--text-dim);">(te)</span>' : ''}</td>
+        <td>${_statusBadge(u.status)}</td>
+        <td><span class="role-badge ${u.role === 'admin' ? 'role-admin' : 'role-user'}">${u.role}</span></td>
+        <td>${u.email_verified ? '✓' : '—'}</td>
+        <td>${act.join(' ') || '—'}</td>
+      </tr>`;
+    }
+
+    async function setUserStatus(id, status) { await _adminPatch(id, { status }); }
+    async function setUserRole(id, role)     { await _adminPatch(id, { role }); }
+
+    async function _adminPatch(id, body) {
+      try {
+        const r = await fetch(`${NOTOX_CONFIG.apiBase}/api/admin/users/${id}`, {
+          method: "PATCH", headers: _adminHeaders(), body: JSON.stringify(body),
+        });
+        if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.error || `Hiba: ${r.status}`); return; }
+        loadUsers();
+      } catch { alert("Nem érhető el a szerver."); }
     }
 
     // ── Rendszer tab ──────────────────────────────────────────────
