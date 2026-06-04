@@ -40,7 +40,7 @@ async function isAROMEAvailable() {
   try {
     const data = await _loadAROME();
     const fetchedAt = new Date(data.ts);
-    return (Date.now() - fetchedAt.getTime()) / 3600000 < 7; // 7h limit
+    return (Date.now() - fetchedAt.getTime()) / 3600000 < 13; // 13h limit (6h cron + jitter/kihagyás tolerancia, mint a DWD)
   } catch { return false; }
 }
 const DWD_CACHE_TTL = 30 * 60 * 1000; // 30 perc
