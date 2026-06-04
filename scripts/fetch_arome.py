@@ -23,7 +23,7 @@ import tempfile, os
 
 import numpy as np
 import xarray as xr
-from shapely.geometry import Polygon as ShapelyPoly, Point
+from shapely.geometry import Polygon as ShapelyPoly, box as shapely_box, mapping as shapely_mapping
 from shapely.validation import make_valid
 
 # ── Konfiguráció ─────────────────────────────────────────────────────────────
@@ -186,18 +186,6 @@ def grid_coords():
     return lats, lons
 
 
-def build_hungary_mask(lats, lons):
-    """Bool maszk: True ahol a rácspont Magyarországon (+ buffer) belül van."""
-    hungary = make_valid(ShapelyPoly([(lo, la) for la, lo in HUNGARY_POLY]))
-    buf = BUFFER * GRID_STEP
-    mask = np.zeros((len(lats), len(lons)), dtype=bool)
-    for i, lat in enumerate(lats):
-        for j, lon in enumerate(lons):
-            if hungary.buffer(buf).contains(Point(lon, lat)):
-                mask[i, j] = True
-    return mask
-
-
 def main():
     run = latest_run()
     run_dt = datetime.strptime(run, "%Y%m%d_%H%M").replace(tzinfo=timezone.utc)
@@ -241,11 +229,10 @@ def main():
             except Exception as e:
                 log(f"  ⚠ PrecTot +{step_h}h: {e}")
 
-        log("\nRács összeállítása…")
+        log("\nRács összeállítása (Shapely-vágással a határra)…")
         lats, lons = grid_coords()
-        log(f"  Maszk számítása ({len(lats)}×{len(lons)})…")
-        mask = build_hungary_mask(lats, lons)
-        log(f"  {mask.sum()} rácspont Magyarországon")
+        hungary = make_valid(ShapelyPoly([(lo, la) for la, lo in HUNGARY_POLY]))
+        half = GRID_STEP / 2
 
         # Változó neve az xarray-ben
         def get_var(ds):
@@ -253,12 +240,26 @@ def main():
 
         for i in range(len(lats)):
             for j in range(len(lons)):
-                if not mask[i, j]:
-                    continue
+                lat = round(float(lats[i]), 5)
+                lon = round(float(lons[j]), 5)
 
-                lat = round(lats[i], 5)
-                lon = round(lons[j], 5)
-                half = GRID_STEP / 2
+                # Cella ∩ Magyarország — a határmenti cellákat a határvonalra vágjuk.
+                cell_box = shapely_box(lon - half, lat - half, lon + half, lat + half)
+                clipped  = cell_box.intersection(hungary)
+                if clipped.is_empty:
+                    continue
+                coverage = clipped.area / cell_box.area
+                if coverage >= 0.99:
+                    geom = None  # belső cella → a frontend négyzetet rajzol
+                else:
+                    mapped = shapely_mapping(clipped)
+                    if mapped["type"] == "Polygon":
+                        geom = [[round(c[0], 5), round(c[1], 5)] for c in mapped["coordinates"][0]]
+                    elif mapped["type"] == "MultiPolygon":
+                        largest = max(mapped["coordinates"], key=lambda p: ShapelyPoly(p[0]).area)
+                        geom = [[round(c[0], 5), round(c[1], 5)] for c in largest[0]]
+                    else:
+                        geom = None
 
                 cell_days = []
                 for d in range(2):
@@ -297,11 +298,10 @@ def main():
                         "source":      "arome-omsz",
                     })
 
-                result["grid"].append({
-                    "lat":  lat,
-                    "lon":  lon,
-                    "days": cell_days,
-                })
+                entry = {"lat": lat, "lon": lon, "days": cell_days}
+                if geom is not None:
+                    entry["geom"] = geom   # csak határmenti celláknál
+                result["grid"].append(entry)
 
     out = Path("data/arome_hungary.json")
     out.parent.mkdir(exist_ok=True)
