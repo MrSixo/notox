@@ -8,164 +8,140 @@
   <link rel="stylesheet" href="/css/style.css" />
   <style>
     body { display: flex; flex-direction: column; min-height: 100vh; }
-
-    .login-wrap {
-      flex: 1; display: flex; align-items: center; justify-content: center;
-      padding: 24px;
-    }
+    .login-wrap { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
     .login-card {
-      width: 100%; max-width: 360px;
-      background: var(--bg-1);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 36px 32px;
+      width: 100%; max-width: 360px; background: var(--bg-1);
+      border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 36px 32px;
     }
-    .login-logo {
-      display: flex; align-items: center; gap: 12px;
-      margin-bottom: 32px;
-    }
+    .login-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
     .login-logo .brand-logo { width: 36px; height: 36px; font-size: 16px; }
     .login-logo span { font-size: 18px; font-weight: 700; color: var(--text-br); }
-
     .login-title { font-size: 15px; font-weight: 600; color: var(--text-br); margin: 0 0 6px; }
-    .login-sub   { font-size: 12px; color: var(--text-muted); margin: 0 0 28px; }
-
-    .btn-ms {
-      width: 100%;
-      display: flex; align-items: center; justify-content: center; gap: 10px;
-      padding: 11px 16px;
-      background: #2f2f2f; border: 1px solid #555; border-radius: var(--radius);
-      color: #fff; font-size: 13px; font-weight: 500; cursor: pointer;
-      transition: background .15s;
-    }
-    .btn-ms:hover { background: #3a3a3a; }
-    .btn-ms:disabled { opacity: .5; cursor: not-allowed; }
-
-    .ms-logo {
-      width: 18px; height: 18px; flex-shrink: 0;
-    }
-
-    .login-err {
-      margin-top: 14px; padding: 10px 12px;
-      background: rgba(224,82,82,.1); border: 1px solid rgba(224,82,82,.25);
-      border-radius: var(--radius); color: var(--red);
-      font-size: 11px; display: none;
-    }
-
-    .login-note {
-      margin-top: 20px; font-size: 11px; color: var(--text-dim); text-align: center;
-    }
-
-    .login-footer {
-      text-align: center; padding: 20px;
-      font-family: var(--mono); font-size: 10px; color: var(--text-dim);
-    }
+    .login-sub { font-size: 12px; color: var(--text-muted); margin: 0 0 22px; }
+    .tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--bg-2); border-radius: var(--radius); padding: 3px; }
+    .tab { flex: 1; padding: 8px; border: none; background: transparent; color: var(--text-muted);
+      font-size: 12px; font-weight: 600; cursor: pointer; border-radius: calc(var(--radius) - 2px); transition: all .15s; }
+    .tab.active { background: var(--bg-1); color: var(--text-br); }
+    .field { margin-bottom: 14px; }
+    .field label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 5px; }
+    .field input { width: 100%; padding: 10px 12px; background: var(--bg-2); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text-br); font-size: 13px; box-sizing: border-box; }
+    .field input:focus { outline: none; border-color: var(--green); }
+    .btn-submit { width: 100%; padding: 11px 16px; background: var(--green); border: none;
+      border-radius: var(--radius); color: #06140d; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+    .btn-submit:hover { opacity: .9; }
+    .btn-submit:disabled { opacity: .5; cursor: not-allowed; }
+    .login-msg { margin-top: 14px; padding: 10px 12px; border-radius: var(--radius); font-size: 11px; display: none; line-height: 1.5; }
+    .login-msg.err { background: rgba(224,82,82,.1); border: 1px solid rgba(224,82,82,.25); color: var(--red); }
+    .login-msg.ok { background: rgba(76,175,125,.1); border: 1px solid rgba(76,175,125,.25); color: var(--green); }
+    .login-footer { text-align: center; padding: 20px; font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
   </style>
 </head>
 <body>
   <div class="login-wrap">
     <div class="login-card">
-      <div class="login-logo">
-        <span class="brand-logo">N</span>
-        <span>No-tox</span>
+      <div class="login-logo"><span class="brand-logo">N</span><span>No-tox</span></div>
+
+      <div class="tabs">
+        <button class="tab active" id="tab-login">Belépés</button>
+        <button class="tab" id="tab-register">Regisztráció</button>
       </div>
 
-      <h1 class="login-title">Belépés a rendszerbe</h1>
-      <p class="login-sub">Használd a szervezeti vagy személyes Microsoft-fiókodat.</p>
-
-      <button class="btn-ms" id="btn-login">
-        <svg class="ms-logo" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="1"  y="1"  width="9" height="9" fill="#f25022"/>
-          <rect x="11" y="1"  width="9" height="9" fill="#7fba00"/>
-          <rect x="1"  y="11" width="9" height="9" fill="#00a4ef"/>
-          <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
-        </svg>
-        Belépés Microsoft-fiókkal
-      </button>
-
-      <div class="login-err" id="login-err"></div>
-
-      <p class="login-note">
-        Szervezeti (Azure AD) és személyes Microsoft-fiókok egyaránt elfogadottak.
-      </p>
-
-      <div id="dev-login-wrap" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
-        <button class="btn" id="btn-dev-login" style="width:100%;justify-content:center;color:var(--text-dim);border-color:var(--border);">
-          Fejlesztői belépés (localhost)
-        </button>
+      <!-- Belépés -->
+      <div id="view-login">
+        <h1 class="login-title">Belépés</h1>
+        <p class="login-sub">Add meg az email-címed és a jelszavad.</p>
+        <div class="field"><label>Email</label><input type="email" id="login-email" autocomplete="email" /></div>
+        <div class="field"><label>Jelszó</label><input type="password" id="login-password" autocomplete="current-password" /></div>
+        <button class="btn-submit" id="btn-login">Belépés</button>
       </div>
+
+      <!-- Regisztráció -->
+      <div id="view-register" style="display:none;">
+        <h1 class="login-title">Regisztráció</h1>
+        <p class="login-sub">Zárt kör: a regisztráció után admin-jóváhagyás szükséges.</p>
+        <div class="field"><label>Email</label><input type="email" id="reg-email" autocomplete="email" /></div>
+        <div class="field"><label>Jelszó (min. 8 karakter)</label><input type="password" id="reg-password" autocomplete="new-password" /></div>
+        <button class="btn-submit" id="btn-register">Regisztráció</button>
+      </div>
+
+      <div class="login-msg" id="login-msg"></div>
     </div>
   </div>
   <div class="login-footer">No-tox · Fuzárium-előrejelzés · 2026</div>
 
-  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
   <script src="/js/config.js"></script>
   <script>
-    (async function () {
-      // Fejlesztői bypass — csak localhost-on, MSAL init előtt
-      if (location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-        if (localStorage.getItem("notox-dev-account")) {
-          window.location.replace("/dashboard.html");
-          return;
-        }
-        const wrap = document.getElementById("dev-login-wrap");
-        wrap.style.display = "";
-        document.getElementById("btn-dev-login").addEventListener("click", () => {
-          localStorage.setItem("notox-dev-account", JSON.stringify({ name: "Dev User", username: "dev@localhost" }));
-          window.location.replace("/dashboard.html");
-        });
-      }
+    const API = NOTOX_CONFIG.apiBase;
+    const msg = document.getElementById("login-msg");
 
-      // Ha már be van lépve MSAL-lal → irány az app
-      let app;
+    function showMsg(text, ok) {
+      msg.textContent = text;
+      msg.className = "login-msg " + (ok ? "ok" : "err");
+      msg.style.display = "";
+    }
+    function clearMsg() { msg.style.display = "none"; }
+
+    // Tab-váltás
+    const tabLogin = document.getElementById("tab-login");
+    const tabReg = document.getElementById("tab-register");
+    tabLogin.addEventListener("click", () => {
+      tabLogin.classList.add("active"); tabReg.classList.remove("active");
+      document.getElementById("view-login").style.display = "";
+      document.getElementById("view-register").style.display = "none";
+      clearMsg();
+    });
+    tabReg.addEventListener("click", () => {
+      tabReg.classList.add("active"); tabLogin.classList.remove("active");
+      document.getElementById("view-register").style.display = "";
+      document.getElementById("view-login").style.display = "none";
+      clearMsg();
+    });
+
+    // Ha már van token → irány a dashboard
+    if (localStorage.getItem("notox-token")) window.location.replace("/dashboard.html");
+
+    // Belépés
+    document.getElementById("btn-login").addEventListener("click", async () => {
+      const btn = document.getElementById("btn-login");
+      const email = document.getElementById("login-email").value.trim();
+      const password = document.getElementById("login-password").value;
+      if (!email || !password) return showMsg("Add meg az emailt és a jelszót.", false);
+      btn.disabled = true; clearMsg();
       try {
-        app = new msal.PublicClientApplication({
-          auth: {
-            clientId:    NOTOX_CONFIG.msal.clientId,
-            authority:   NOTOX_CONFIG.msal.authority,
-            redirectUri: NOTOX_CONFIG.msal.redirectUri,
-          },
-          cache: { cacheLocation: "localStorage" },
+        const r = await fetch(`${API}/api/login`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
         });
-        await app.initialize();
-        try { await app.handleRedirectPromise(); } catch (_) {}
-        const accounts = app.getAllAccounts();
-        if (accounts.length) {
-          window.location.replace("/dashboard.html");
-          return;
-        }
-      } catch (_) {
-        // MSAL init meghiúsult (pl. placeholder clientId) — csak a dev bypass működik
-        return;
+        const data = await r.json();
+        if (!r.ok) { showMsg(data.error || "Hibás belépés.", false); btn.disabled = false; return; }
+        localStorage.setItem("notox-token", data.token);
+        localStorage.setItem("notox-user", JSON.stringify(data.user));
+        window.location.replace("/dashboard.html");
+      } catch (e) {
+        showMsg("Nem érhető el a szerver. Próbáld újra.", false); btn.disabled = false;
       }
+    });
 
-      document.getElementById("btn-login").addEventListener("click", async () => {
-        const btn = document.getElementById("btn-login");
-        btn.disabled = true;
-        btn.textContent = "Belépés folyamatban…";
-        const err = document.getElementById("login-err");
-        err.style.display = "none";
-        try {
-          const result = await app.loginPopup({ scopes: NOTOX_CONFIG.scopes });
-          app.setActiveAccount(result.account);
-          window.location.replace("/dashboard.html");
-        } catch (e) {
-          if (e.errorCode === "popup_window_error" || e.errorCode === "empty_window_error") {
-            await app.loginRedirect({ scopes: NOTOX_CONFIG.scopes });
-            return;
-          }
-          err.textContent = e.message || "Ismeretlen hiba a belépés során.";
-          err.style.display = "";
-          btn.disabled = false;
-          btn.innerHTML = `<svg class="ms-logo" viewBox="0 0 21 21" fill="none">
-            <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
-            <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
-            <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
-            <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
-          </svg> Belépés Microsoft-fiókkal`;
-        }
-      });
-    })();
+    // Regisztráció
+    document.getElementById("btn-register").addEventListener("click", async () => {
+      const btn = document.getElementById("btn-register");
+      const email = document.getElementById("reg-email").value.trim();
+      const password = document.getElementById("reg-password").value;
+      if (!email || password.length < 8) return showMsg("Érvényes email és min. 8 karakteres jelszó kell.", false);
+      btn.disabled = true; clearMsg();
+      try {
+        const r = await fetch(`${API}/api/register`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await r.json();
+        showMsg(data.message || data.error || "Ismeretlen válasz.", r.ok);
+        btn.disabled = false;
+      } catch (e) {
+        showMsg("Nem érhető el a szerver. Próbáld újra.", false); btn.disabled = false;
+      }
+    });
   </script>
 </body>
 </html>

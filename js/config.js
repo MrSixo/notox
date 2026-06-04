@@ -8,6 +8,8 @@
   try { savedMsal = JSON.parse(localStorage.getItem("notox-msal-config") || "{}"); } catch {}
 
   window.NOTOX_CONFIG = {
+    // No-tox auth-backend (Azure App Service, Express)
+    apiBase: "https://notox-api.azurewebsites.net",
     msal: {
       clientId:    savedMsal.clientId    || "AZURE_CLIENT_ID_IDE",
       authority:   savedMsal.tenantId

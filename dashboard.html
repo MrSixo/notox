@@ -217,13 +217,13 @@
     </div>
   </main>
 
-  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
   <script src="/js/config.js"></script>
   <script src="/js/shell.js"></script>
   <script src="/js/openmeteo.js"></script>
   <script src="/js/dwd.js"></script>
   <script src="/js/disease-models.js"></script>
   <script src="/js/fusarium.js"></script>
+  <script src="/js/api.js"></script>
   <script>
     const STORAGE_KEY = "notox-locations";
 
@@ -244,11 +244,15 @@
       { name: "Miskolc",             lat: 48.1035, lon: 20.7784 },
     ];
 
-    function loadLocs() {
-      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
+    // Per-user helyszínek a backendből (cache); a localStorage-t felváltja.
+    let _locs = [];
+    const _flatLoc = (r) => ({ id: r.id, name: r.name, ...(r.data || {}) });
+    const _locData = (l) => ({ lat: l.lat, lon: l.lon, modelId: l.modelId, wxModel: l.wxModel });
+    function loadLocs() { return _locs; }
+    async function refreshLocs() {
+      try { _locs = (await NotoxAPI.list("locations")).map(_flatLoc); } catch { _locs = []; }
+      return _locs;
     }
-    function saveLocs(locs) { localStorage.setItem(STORAGE_KEY, JSON.stringify(locs)); }
-    function genId() { return Math.random().toString(36).slice(2, 9); }
 
     function riskColor(risk) {
       if (risk >= 75) return "var(--red)";
@@ -405,16 +409,15 @@
     }
 
     function changeLocModel(locId, modelId) {
-      const locs = loadLocs();
-      const idx  = locs.findIndex(l => l.id === locId);
+      const idx = _locs.findIndex(l => l.id === locId);
       if (idx === -1) return;
-      locs[idx].modelId = modelId;
-      saveLocs(locs);
-      // Újrarenderelés cache-ből — nincs új API hívás
+      _locs[idx].modelId = modelId;
+      NotoxAPI.update("locations", locId, _locs[idx].name, _locData(_locs[idx]));
+      // Újrarenderelés cache-ből — nincs új időjárás-fetch
       const cached = _weatherCache[locId];
       if (cached !== undefined) {
         const el = document.getElementById(`w-${locId}`);
-        if (el) el.outerHTML = renderWidget(locs[idx], cached);
+        if (el) el.outerHTML = renderWidget(_locs[idx], cached);
         // Rizikótérkép frissítése
         const todayStr = new Date().toISOString().slice(0, 10);
         const row = cached ? (cached.find(d => d.date === todayStr) || cached[cached.length - 1]) : null;
@@ -426,13 +429,12 @@
 
     // Időjárás-modell váltása egy helyszínen → újratöltés
     function changeLocWxModel(locId, wxModel) {
-      const locs = loadLocs();
-      const idx  = locs.findIndex(l => l.id === locId);
+      const idx = _locs.findIndex(l => l.id === locId);
       if (idx === -1) return;
-      locs[idx].wxModel = wxModel;
-      saveLocs(locs);
+      _locs[idx].wxModel = wxModel;
+      NotoxAPI.update("locations", locId, _locs[idx].name, _locData(_locs[idx]));
       delete _weatherCache[locId];   // új modell → friss adat
-      fetchAndRender(locs[idx]);
+      fetchAndRender(_locs[idx]);
     }
 
     // A helyszín kiválasztott időjárás-modelljéből tölt, fallback-lánccal
@@ -594,21 +596,21 @@
       document.getElementById("inp-lon").value  = "";
     }
 
-    function saveNewLoc() {
+    async function saveNewLoc() {
       const name    = document.getElementById("inp-name").value.trim();
       const lat     = parseFloat(document.getElementById("inp-lat").value);
       const lon     = parseFloat(document.getElementById("inp-lon").value);
       const modelId = document.getElementById("inp-model").value || "__dewolf2003";
       if (!name || isNaN(lat) || isNaN(lon)) return;
-      const locs = loadLocs();
-      locs.push({ id: genId(), name, lat, lon, modelId, wxModel: "arome" });
-      saveLocs(locs);
+      const rec = await NotoxAPI.create("locations", name, { lat, lon, modelId, wxModel: "arome" });
+      if (rec) _locs.push(_flatLoc(rec));
       closeForm();
       renderGrid();
     }
 
-    function removeLoc(id) {
-      saveLocs(loadLocs().filter(l => l.id !== id));
+    async function removeLoc(id) {
+      await NotoxAPI.remove("locations", id);
+      _locs = _locs.filter(l => l.id !== id);
       renderGrid();
     }
 
@@ -645,7 +647,7 @@
       document.getElementById(id).addEventListener("keydown", e => { if (e.key === "Enter") saveNewLoc(); });
     });
 
-    renderGrid();
+    (async () => { await refreshLocs(); renderGrid(); })();
 
     function escHtml(s) {
       return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");

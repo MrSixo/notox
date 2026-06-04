@@ -2,11 +2,15 @@
 const express = require("express");
 const cors = require("cors");
 const { getPool } = require("./src/db");
-const { hashPassword, verifyPassword, genToken, signJwt } = require("./src/auth");
+const { hashPassword, verifyPassword, genToken, signJwt, verifyJwt } = require("./src/auth");
 
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: ["https://mrsixo.github.io", "http://localhost:3003"] }));
+app.use(cors({ origin: [
+  "https://mrsixo.github.io",
+  "https://notoxdatamate.z36.web.core.windows.net",
+  "http://localhost:3003",
+] }));
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -172,6 +176,78 @@ app.post("/api/reset-password", async (req, res) => {
     return res.status(500).json({ error: "Szerverhiba" });
   }
 });
+
+// ── JWT-middleware: a védett endpointok a Bearer-tokenből veszik a user_id-t ──
+function requireAuth(req, res, next) {
+  const auth = req.headers.authorization || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  if (!token) return res.status(401).json({ error: "Bejelentkezés szükséges" });
+  try {
+    const payload = verifyJwt(token);
+    req.userId = payload.sub;
+    req.userRole = payload.role;
+    next();
+  } catch {
+    return res.status(401).json({ error: "Érvénytelen vagy lejárt munkamenet" });
+  }
+}
+
+// ── Generikus per-user CRUD egy táblára (fields / locations / models) ─────────
+// Az `entity` fix, belső érték (nem user-input) → biztonságos a query-be illeszteni.
+function crudRoutes(entity) {
+  app.get(`/api/${entity}`, requireAuth, async (req, res) => {
+    try {
+      const r = await getPool().query(
+        `SELECT id, name, data, created_at, updated_at FROM ${entity} WHERE user_id = $1 ORDER BY created_at`,
+        [req.userId]
+      );
+      res.json(r.rows);
+    } catch (err) { console.error(`${entity} list:`, err); res.status(500).json({ error: "Szerverhiba" }); }
+  });
+
+  app.post(`/api/${entity}`, requireAuth, async (req, res) => {
+    const name = (req.body?.name || "").trim();
+    const data = req.body?.data ?? {};
+    if (!name) return res.status(400).json({ error: "A név kötelező" });
+    try {
+      const r = await getPool().query(
+        `INSERT INTO ${entity} (user_id, name, data) VALUES ($1, $2, $3)
+         RETURNING id, name, data, created_at, updated_at`,
+        [req.userId, name, data]
+      );
+      res.status(201).json(r.rows[0]);
+    } catch (err) { console.error(`${entity} create:`, err); res.status(500).json({ error: "Szerverhiba" }); }
+  });
+
+  app.put(`/api/${entity}/:id`, requireAuth, async (req, res) => {
+    const name = (req.body?.name || "").trim();
+    const data = req.body?.data ?? {};
+    try {
+      const r = await getPool().query(
+        `UPDATE ${entity} SET name = $1, data = $2, updated_at = now()
+         WHERE id = $3 AND user_id = $4 RETURNING id, name, data, created_at, updated_at`,
+        [name, data, req.params.id, req.userId]
+      );
+      if (r.rowCount === 0) return res.status(404).json({ error: "Nem található" });
+      res.json(r.rows[0]);
+    } catch (err) { console.error(`${entity} update:`, err); res.status(500).json({ error: "Szerverhiba" }); }
+  });
+
+  app.delete(`/api/${entity}/:id`, requireAuth, async (req, res) => {
+    try {
+      const r = await getPool().query(
+        `DELETE FROM ${entity} WHERE id = $1 AND user_id = $2`,
+        [req.params.id, req.userId]
+      );
+      if (r.rowCount === 0) return res.status(404).json({ error: "Nem található" });
+      res.status(204).end();
+    } catch (err) { console.error(`${entity} delete:`, err); res.status(500).json({ error: "Szerverhiba" }); }
+  });
+}
+
+crudRoutes("fields");
+crudRoutes("locations");
+crudRoutes("models");
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`notox-api Express listening on ${port}`));

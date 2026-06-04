@@ -184,9 +184,9 @@
     </div>
   </main>
 
-  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
   <script src="/js/config.js"></script>
   <script src="/js/shell.js"></script>
+  <script src="/js/api.js"></script>
   <script>
     const STORAGE_KEY = "notox-models";
 
@@ -266,11 +266,17 @@
       },
     ];
 
-    function loadCustom() {
-      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
-    }
+    // Egyéni modellek: API = forrás, localStorage = cache a közös disease-models.js-nek.
+    let _custom = [];
+    const _flatModel = (r) => ({ id: r.id, name: r.name, ...(r.data || {}) });
+    const _modelData = (m) => { const { id, name, ...data } = m; return data; };
+    function loadCustom() { return _custom; }
     function saveCustom(models) { localStorage.setItem(STORAGE_KEY, JSON.stringify(models)); }
-    function genId() { return "m_" + Math.random().toString(36).slice(2, 9); }
+    async function refreshCustom() {
+      try { _custom = (await NotoxAPI.list("models")).map(_flatModel); } catch { _custom = []; }
+      saveCustom(_custom);  // a többi oldal (disease-models.js) localStorage-ból olvassa
+      return _custom;
+    }
 
     function allModels() { return [...BUILTIN_MODELS, ...loadCustom()]; }
 
@@ -389,9 +395,11 @@
       `;
     }
 
-    function deleteModel(id) {
+    async function deleteModel(id) {
       if (!confirm("Biztosan törlöd ezt a modellt?")) return;
-      saveCustom(loadCustom().filter(m => m.id !== id));
+      await NotoxAPI.remove("models", id);
+      _custom = _custom.filter(m => m.id !== id);
+      saveCustom(_custom);
       if (activeId === id) {
         activeId = null;
         document.getElementById("model-detail").innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:300px;color:var(--text-dim);flex-direction:column;gap:10px;"><svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1" opacity=".3"><path d="M3 5h10M3 8h7M3 11h4M13 9l2 2-2 2"/></svg><span style="font-size:12px;">Válassz modellt a listából</span></div>`;
@@ -496,7 +504,7 @@
     }
 
     document.getElementById("btn-cancel-model").addEventListener("click", closeForm);
-    document.getElementById("btn-save-model").addEventListener("click", () => {
+    document.getElementById("btn-save-model").addEventListener("click", async () => {
       const name = document.getElementById("m-name").value.trim();
       if (!name) return;
       const type = document.getElementById("m-type").value;
@@ -524,13 +532,11 @@
         ? document.getElementById("m-doi-lt").value.trim()
         : document.getElementById("m-doi").value.trim();
 
-      const custom = loadCustom();
-
       if (editingId) {
         // Szerkesztés: meglévő frissítése
-        const idx = custom.findIndex(m => m.id === editingId);
+        const idx = _custom.findIndex(m => m.id === editingId);
         if (idx !== -1) {
-          custom[idx] = { ...custom[idx], name,
+          _custom[idx] = { ..._custom[idx], name,
             latin:    document.getElementById("m-latin").value.trim(),
             category: document.getElementById("m-category").value,
             authors: document.getElementById("m-authors").value.trim() || "Ismeretlen",
@@ -540,8 +546,9 @@
             desc:    document.getElementById("m-desc").value.trim(),
             params,
           };
+          await NotoxAPI.update("models", editingId, name, _modelData(_custom[idx]));
         }
-        saveCustom(custom);
+        saveCustom(_custom);
         const savedId = editingId;
         editingId = null;
         closeForm();
@@ -550,7 +557,7 @@
       } else {
         // Új modell
         const m = {
-          id: genId(), name,
+          name,
           latin:    document.getElementById("m-latin").value.trim(),
           category: document.getElementById("m-category").value,
           authors: document.getElementById("m-authors").value.trim() || "Ismeretlen",
@@ -560,17 +567,21 @@
           desc:    document.getElementById("m-desc").value.trim(),
           params, builtin: false,
         };
-        custom.push(m);
-        saveCustom(custom);
+        const rec = await NotoxAPI.create("models", name, _modelData(m));
+        if (rec) _custom.push(_flatModel(rec));
+        saveCustom(_custom);
         closeForm();
         renderList();
-        showModel(m.id);
+        if (rec) showModel(rec.id);
       }
     });
 
-    renderList();
-    // Auto-select first model
-    if (BUILTIN_MODELS.length) showModel(BUILTIN_MODELS[0].id);
+    (async () => {
+      await refreshCustom();
+      renderList();
+      // Auto-select first model
+      if (BUILTIN_MODELS.length) showModel(BUILTIN_MODELS[0].id);
+    })();
 
     // ── Forráselemzés import ───────────────────────────────────────
     const pendingRaw = localStorage.getItem('notox-pending-import');

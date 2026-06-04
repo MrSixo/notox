@@ -42,14 +42,9 @@ async function login() {
 }
 
 async function logout() {
-  if (localStorage.getItem("notox-dev-account")) {
-    localStorage.removeItem("notox-dev-account");
-    window.location.href = "/login.html";
-    return;
-  }
-  const app = getMsal();
-  const account = app.getActiveAccount() || (await getAccount());
-  await app.logoutPopup({ account });
+  localStorage.removeItem("notox-token");
+  localStorage.removeItem("notox-user");
+  localStorage.removeItem("notox-dev-account");
   window.location.href = "/login.html";
 }
 
@@ -66,18 +61,18 @@ async function requireAuth() {
     try { return JSON.parse(devRaw); } catch (_) {}
   }
 
-  // MSAL redirect callback feldolgozása
-  const app = getMsal();
-  await app.initialize();
-  try { await app.handleRedirectPromise(); } catch (_) {}
-
-  const account = await getAccount();
-  if (!account) {
+  // JWT-alapú belépés (email+jelszó backend)
+  const token = localStorage.getItem("notox-token");
+  if (!token) {
     window.location.replace("/login.html");
     return null;
   }
-  app.setActiveAccount(account);
-  return account;
+  try {
+    const user = JSON.parse(localStorage.getItem("notox-user") || "{}");
+    return { username: user.email || "", name: user.email || "", role: user.role || "user" };
+  } catch {
+    return { username: "", role: "user" };
+  }
 }
 
 // ── Admin jogosultság ─────────────────────────────────────────────────────

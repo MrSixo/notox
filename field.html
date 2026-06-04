@@ -288,7 +288,6 @@
     </div>
   </main>
 
-  <script src="https://alcdn.msauth.net/browser/3.14.0/js/msal-browser.min.js"></script>
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/shpjs@6.1.0/dist/shp.js"></script>
   <script src="/js/config.js"></script>
@@ -297,6 +296,7 @@
   <script src="/js/dwd.js"></script>
   <script src="/js/disease-models.js"></script>
   <script src="/js/audit.js"></script>
+  <script src="/js/api.js"></script>
   <script>
   // ── Konstansok ─────────────────────────────────────────────────────────────
   const FIELDS_KEY = "notox-fields";
@@ -327,22 +327,15 @@
   }
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
-  function loadFields() {
-    try { return JSON.parse(localStorage.getItem(FIELDS_KEY) || "[]"); } catch { return []; }
+  // Per-user táblák a backendből (cache); a localStorage-t felváltja.
+  let _fields = [];
+  const _flatField = (r) => ({ id: r.id, name: r.name, ...(r.data || {}) });
+  const _fieldData = (f) => { const { id, name, ...data } = f; return data; };
+  function loadFields() { return _fields; }
+  async function refreshFields() {
+    try { _fields = (await NotoxAPI.list("fields")).map(_flatField); } catch { _fields = []; }
+    return _fields;
   }
-  function saveFields(arr) {
-    const json = JSON.stringify(arr);
-    // Figyelmeztetés ha közel az 5 MB-os localStorage limit
-    if (json.length > 3 * 1024 * 1024) {
-      console.warn(`[notox] Táblák localStorage mérete: ${(json.length / 1024 / 1024).toFixed(1)} MB — közel az 5 MB-os limithez. Régi polygon adatok törölhetők.`);
-    }
-    try {
-      localStorage.setItem(FIELDS_KEY, json);
-    } catch (e) {
-      alert("A tábla nem menthető: a localStorage megtelt. Töröljön egy régi táblát, vagy csökkentse a polygon méretét.");
-    }
-  }
-  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 
   // ── Risk cache (in-memory) ─────────────────────────────────────────────────
   const _riskCache = {};
@@ -461,7 +454,7 @@
     document.getElementById("field-form-wrap").style.display = "none";
   }
 
-  function saveField() {
+  async function saveField() {
     const name = document.getElementById("f-name").value.trim();
     const lat  = parseFloat(document.getElementById("f-lat").value);
     const lon  = parseFloat(document.getElementById("f-lon").value);
@@ -477,11 +470,10 @@
       ? _calcAreaHa(polygon.geometry.coordinates[0])
       : null;
 
-    const fields = loadFields();
     if (_editingId) {
-      const idx = fields.findIndex(f => f.id === _editingId);
+      const idx = _fields.findIndex(f => f.id === _editingId);
       if (idx >= 0) {
-        fields[idx] = { ...fields[idx], name, lat, lon,
+        _fields[idx] = { ..._fields[idx], name, lat, lon,
           crop:         document.getElementById("f-crop").value,
           prevCrop:     document.getElementById("f-prev-crop").value,
           notes:        document.getElementById("f-notes").value.trim(),
@@ -490,31 +482,32 @@
         };
         delete _riskCache[_editingId];
         auditLog("field_update", `${name} (${lat.toFixed(3)}, ${lon.toFixed(3)})${area_ha ? ` · ${area_ha.toFixed(1)} ha` : ""}`);
+        await NotoxAPI.update("fields", _editingId, name, _fieldData(_fields[idx]));
       }
     } else {
-      fields.push({
-        id: uid(), name, lat, lon,
+      const nf = { name, lat, lon,
         crop:         document.getElementById("f-crop").value,
         prevCrop:     document.getElementById("f-prev-crop").value,
         notes:        document.getElementById("f-notes").value.trim(),
         soilDiseases, plantDiseases,
         polygon, area_ha,
         createdAt:    new Date().toISOString(),
-      });
+      };
+      const rec = await NotoxAPI.create("fields", name, _fieldData(nf));
+      if (rec) _fields.push(_flatField(rec));
       auditLog("field_save", `${name} (${lat.toFixed(3)}, ${lon.toFixed(3)})${area_ha ? ` · ${area_ha.toFixed(1)} ha` : ""}`);
     }
-    saveFields(fields);
     hideForm();
     renderFields();
     loadAllRisks();
   }
 
-  function deleteField(id) {
-    const fields = loadFields();
-    const f = fields.find(x => x.id === id);
+  async function deleteField(id) {
+    const f = _fields.find(x => x.id === id);
     if (!f || !confirm(`Törlöd a(z) „${f.name}" táblát?`)) return;
     auditLog("field_delete", f.name);
-    saveFields(fields.filter(x => x.id !== id));
+    await NotoxAPI.remove("fields", id);
+    _fields = _fields.filter(x => x.id !== id);
     delete _riskCache[id];
     document.getElementById("detail-wrap").style.display = "none";
     renderFields();
@@ -1052,8 +1045,7 @@
     }
   });
 
-  renderFields();
-  loadAllRisks();
+  (async () => { await refreshFields(); renderFields(); loadAllRisks(); })();
   </script>
 </body>
 </html>
