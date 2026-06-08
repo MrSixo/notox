@@ -869,7 +869,7 @@
       const me = JSON.parse(localStorage.getItem("notox-user") || "{}");
       const isSelf = u.email === me.email;
       const act = [];
-      if (u.status !== "approved") act.push(`<button class="btn btn-sm" onclick="setUserStatus('${u.id}','approved')">Jóváhagyás</button>`);
+      if (u.status !== "approved" || !u.email_verified) act.push(`<button class="btn btn-sm" onclick="setUserStatus('${u.id}','approved')">Jóváhagyás</button>`);
       if (u.status !== "disabled" && !isSelf) act.push(`<button class="btn btn-sm" onclick="setUserStatus('${u.id}','disabled')">Letiltás</button>`);
       if (u.role !== "admin") act.push(`<button class="btn btn-sm" onclick="setUserRole('${u.id}','admin')">Admin</button>`);
       return `<tr>

@@ -279,6 +279,8 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
     if (!["pending", "approved", "disabled"].includes(status))
       return res.status(400).json({ error: "Érvénytelen státusz" });
     sets.push(`status = $${i++}`); vals.push(status);
+    // Zárt kör, email-küldés (F3) nélkül: az admin-jóváhagyás egyben megerősíti a fiókot.
+    if (status === "approved") sets.push("email_verified = true");
   }
   if (role !== undefined) {
     if (!["user", "admin"].includes(role))
