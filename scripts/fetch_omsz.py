@@ -11,7 +11,7 @@ Forrás: https://odp.met.hu/weather/weather_reports/synoptic/hungary/hourly/csv/
 Licenc: OMSZ Open Data
 """
 
-import csv, io, json, zipfile
+import csv, io, json, time, zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.request import urlopen, Request
@@ -24,13 +24,22 @@ OMSZ_URL = (
 MISSING = -999  # OMSZ hiányzó adat kódja
 
 
-def fetch_csv() -> str:
+def fetch_csv(retries: int = 3) -> str:
     req = Request(OMSZ_URL, headers={"User-Agent": "No-tox/1.0 (github.com/MrSixo/notox)"})
-    with urlopen(req, timeout=30) as resp:
-        buf = resp.read()
-    with zipfile.ZipFile(io.BytesIO(buf)) as zf:
-        name = next(n for n in zf.namelist() if n.endswith(".csv"))
-        return zf.read(name).decode("utf-8", errors="replace")
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            with urlopen(req, timeout=30) as resp:
+                buf = resp.read()
+            with zipfile.ZipFile(io.BytesIO(buf)) as zf:
+                name = next(n for n in zf.namelist() if n.endswith(".csv"))
+                return zf.read(name).decode("utf-8", errors="replace")
+        except Exception as e:
+            last_err = e
+            print(f"  ⚠ letöltés hiba ({attempt}/{retries}): {e}")
+            if attempt < retries:
+                time.sleep(attempt * 5)
+    raise last_err
 
 
 def parse_float(val: str):
@@ -117,8 +126,9 @@ def main():
     stations = parse_stations(text)
     print(f"  {len(stations)} állomás")
 
-    # Időbélyeg a CSV első sorából
-    lines = [l for l in text.splitlines() if l.strip() and not l.startswith("Time")]
+    # Időbélyeg a CSV első adatsorából (a fejléc lehet "Time" vagy "Idő")
+    lines = [l for l in text.splitlines()
+             if l.strip() and not (l.startswith("Time") or l.startswith("Idő"))]
     ts_raw = lines[0].split(";")[0].strip() if lines else ""
     try:
         ts = datetime.strptime(ts_raw, "%Y%m%d%H%M").replace(tzinfo=timezone.utc).isoformat()

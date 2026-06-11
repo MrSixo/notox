@@ -2,9 +2,10 @@ name: OMSZ mérések frissítés
 
 on:
   schedule:
-    # Óránkénti cron a GitHubon megbízhatatlan (jitter, kihagyott példányok),
-    # ezért 2 óránként — a ritkább ütemezés stabilabban fut (mint a DWD 6h-s).
-    - cron: "10 */2 * * *"
+    # Óránként — az OMSZ forrás (HABP_1H) óránként frissül, ezzel lépést tartunk.
+    # A GitHub-cron jitterezhet/kihagyhat; a több futás több esélyt ad a friss adatra.
+    # A measurements.html jelzi az adat korát (>3h → figyelmeztetés).
+    - cron: "10 * * * *"
   workflow_dispatch:
 
 permissions:
