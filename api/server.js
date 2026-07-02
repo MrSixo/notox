@@ -1,16 +1,34 @@
 // No-tox auth + per-user API — Express (Azure App Service, F1).
 const express = require("express");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
 const { getPool } = require("./src/db");
 const { hashPassword, verifyPassword, genToken, signJwt, verifyJwt } = require("./src/auth");
 
 const app = express();
+app.set("trust proxy", 1); // Azure App Service X-Forwarded-For → valódi kliens-IP
 app.use(express.json());
 app.use(cors({ origin: [
   "https://mrsixo.github.io",
   "https://notoxdatamate.z36.web.core.windows.net",
   "http://localhost:3003",
 ] }));
+
+// Brute-force védelem az auth-végpontokon: 20 kérés / 15 perc / IP.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Azure App Service az X-Forwarded-For-ba porttal teszi a kliens IP-t (IP:port),
+  // ami kérésenként változik → a portot levágjuk, hogy IP-nként számoljunk.
+  keyGenerator: (req) => {
+    const xff = (req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+    return xff.replace(/:\d+$/, "") || req.ip;
+  },
+  message: { error: "Túl sok próbálkozás — próbáld újra pár perc múlva." },
+});
+app.use(["/api/login", "/api/register", "/api/forgot-password", "/api/reset-password"], authLimiter);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
